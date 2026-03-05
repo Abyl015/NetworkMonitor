@@ -1,0 +1,13 @@
+﻿{
+  "name": "Strict",
+  "sample_factor": 10,
+  "pps_window_sec": 10,
+  "scan_ports_threshold": 30,
+  "dos_pps_eff_threshold": 80,
+
+  "ml": {
+    "contamination": 0.01,
+    "n_estimators": 80,
+    "train_packets": 700
+  }
+}

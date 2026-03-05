@@ -1,0 +1,13 @@
+﻿{
+  "name": "Default",
+  "sample_factor": 20,
+  "pps_window_sec": 10,
+  "scan_ports_threshold": 50,
+  "dos_pps_eff_threshold": 100,
+
+  "ml": {
+    "contamination": 0.005,
+    "n_estimators": 50,
+    "train_packets": 500
+  }
+}

@@ -1,0 +1,8 @@
+Report time: 2026-02-13 20:14:58.333183
+DB: C:\Users\kuand\PycharmProjects\NetworkMonitor\NetworkMonitor\storage\traffic_data.db
+Total alerts: 176
+
+By type:
+- ML_ANOMALY: 169
+- SYSTEM: 4
+- PORT_SCAN_SUSPECT: 3
