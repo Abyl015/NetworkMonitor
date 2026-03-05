@@ -20,7 +20,11 @@ class NetworkEngine:
         interfaces = scapy.get_working_ifaces()
         # Ищем адаптер, который не Bluetooth и не Loopback, и имеет IP
         for iface in interfaces:
-            name = iface.description.lower()
+            # На некоторых платформах description может быть None.
+            # Тогда используем имя интерфейса, чтобы не падать на .lower().
+            description = getattr(iface, 'description', '') or ''
+            iface_name = getattr(iface, 'name', '') or ''
+            name = f"{description} {iface_name}".lower()
             if iface.ip and iface.ip != '127.0.0.1':
                 # Игнорируем Bluetooth и виртуальные адаптеры
                 if "bluetooth" not in name and "virtual" not in name:
