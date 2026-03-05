@@ -1,59 +1,160 @@
-/* Главное окно */
+/* ====== Base window ====== */
 QMainWindow {
     background-color: #0f111a;
 }
 
-/* Общие надписи */
+/* ====== Labels ====== */
 QLabel {
     color: #89b4fa;
-    font-family: 'Segoe UI', sans-serif;
+    font-family: "Segoe UI", sans-serif;
     font-size: 14px;
-    font-weight: bold;
-    margin-bottom: 5px;
-    text-transform: uppercase;
+    font-weight: 700;
+    margin-bottom: 4px;
 }
 
-/* Поле логов */
+/* Для небольших инфо-лейблов (например IB score) */
+QLabel#ib_label {
+    color: #f9e2af;
+    font-weight: 700;
+    font-size: 13px;
+}
+
+/* ====== Log area ====== */
 QTextEdit {
     background-color: #161925;
     color: #a6adc8;
     border: 2px solid #1e2233;
     border-radius: 10px;
     padding: 12px;
-    font-family: 'Consolas', monospace;
+    font-family: "Consolas", monospace;
     font-size: 13px;
 }
 
-/* Список ТОП атакующих */
+/* ====== List widget ====== */
 QListWidget {
     background-color: #161925;
     color: #f38ba8;
     border: 2px solid #1e2233;
     border-radius: 10px;
-    padding: 5px;
-    font-family: 'Consolas';
+    padding: 6px;
+    font-family: "Consolas", monospace;
+    font-size: 13px;
 }
 
-/* Кнопка запуска (базовое состояние) */
+QListWidget::item {
+    padding: 6px 8px;
+    border-radius: 6px;
+}
+
+QListWidget::item:selected {
+    background: #1e2233;
+    color: #f38ba8;
+}
+
+/* ====== Buttons (base) ====== */
 QPushButton {
-    background-color: #31b53e; /* Зеленый при запуске */
-    color: white;
+    background-color: #23283d;
+    color: #cdd6f4;
     border-radius: 8px;
-    padding: 15px;
-    font-size: 15px;
-    font-weight: bold;
-    border: none;
+    padding: 12px 14px;
+    font-size: 14px;
+    font-weight: 700;
+    border: 1px solid #2b3352;
 }
 
 QPushButton:hover {
+    background-color: #2b3352;
+}
+
+QPushButton:pressed {
+    background-color: #1e2233;
+}
+
+/* Disabled */
+QPushButton:disabled {
+    background-color: #1a1d2a;
+    color: #6c7086;
+    border: 1px solid #1e2233;
+}
+
+/* Primary (Start) button */
+QPushButton#primary_btn {
+    background-color: #31b53e;
+    border: none;
+    color: #ffffff;
+}
+
+QPushButton#primary_btn:hover {
     background-color: #40cc4e;
 }
 
-/* Специальный стиль для кнопки, когда она в режиме "Остановить" */
+/* Stop mode */
 QPushButton#stop_mode {
-    background-color: #f38ba8; /* Красный цвет */
+    background-color: #f38ba8;
+    border: none;
+    color: #11111b;
 }
 
 QPushButton#stop_mode:hover {
     background-color: #ff8091;
+}
+
+/* Secondary buttons (Profiles, Export) */
+QPushButton#secondary_btn {
+    background-color: #1e2233;
+    border: 1px solid #2b3352;
+    color: #cdd6f4;
+}
+
+QPushButton#secondary_btn:hover {
+    background-color: #23283d;
+}
+
+/* ====== Dialogs ====== */
+QDialog {
+    background-color: #0f111a;
+}
+
+/* ====== ComboBox ====== */
+QComboBox {
+    background-color: #161925;
+    color: #cdd6f4;
+    border: 2px solid #1e2233;
+    border-radius: 8px;
+    padding: 6px 10px;
+    font-size: 13px;
+}
+
+QComboBox:hover {
+    border: 2px solid #2b3352;
+}
+
+QComboBox QAbstractItemView {
+    background-color: #161925;
+    color: #cdd6f4;
+    selection-background-color: #1e2233;
+    border: 1px solid #2b3352;
+    outline: 0px;
+}
+
+/* ====== MessageBox ====== */
+QMessageBox {
+    background-color: #0f111a;
+}
+
+QMessageBox QLabel {
+    color: #cdd6f4;
+    font-size: 13px;
+    font-weight: 600;
+    text-transform: none;
+}
+
+/* ====== Tooltips ====== */
+QToolTip {
+    background-color: #161925;
+    color: #cdd6f4;
+    border: 1px solid #2b3352;
+    padding: 6px;
+    border-radius: 6px;
+    font-size: 12px;
 }

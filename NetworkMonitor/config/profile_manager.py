@@ -21,8 +21,6 @@ class ProfileManager:
         self.profiles_dir = base / "profiles"
         self.settings_path = base / "settings.json"
         self.profiles_dir.mkdir(parents=True, exist_ok=True)
-
-        # гарантируем наличие default.json
         self._ensure_default_profile()
 
     # ---------- Public API ----------
@@ -35,7 +33,6 @@ class ProfileManager:
         return profiles
 
     def get_active_filename(self) -> str:
-        # settings тоже иногда бывает с BOM, поэтому utf-8-sig
         if self.settings_path.exists():
             s = self._safe_load_json(self.settings_path)
             if isinstance(s, dict):
@@ -51,20 +48,56 @@ class ProfileManager:
     def load_profile(self, filename: str) -> Profile:
         p = self.profiles_dir / filename
         if not p.exists():
-            # если запросили несуществующий — откатываемся на default
             p = self.profiles_dir / "default.json"
 
         data = self._safe_load_json(p)
         if not isinstance(data, dict) or not data:
-            # если файл пустой/битый — отдаём дефолт
             data = self._default_profile_dict()
 
         return Profile(filename=p.name, data=data)
 
+    def save_profile(self, filename: str, data: Dict[str, Any]) -> None:
+        p = self.profiles_dir / filename
+        p.write_text(
+            json.dumps(data, ensure_ascii=False, indent=2),
+            encoding="utf-8"
+        )
+
+    def create_copy(self, src_filename: str, new_filename: str) -> str:
+        src = self.load_profile(src_filename)
+        # гарантируем .json
+        if not new_filename.lower().endswith(".json"):
+            new_filename += ".json"
+
+        # если такой уже есть — добавим суффикс
+        target = self.profiles_dir / new_filename
+        if target.exists():
+            stem = target.stem
+            i = 2
+            while (self.profiles_dir / f"{stem}_{i}.json").exists():
+                i += 1
+            new_filename = f"{stem}_{i}.json"
+
+        data = dict(src.data)
+        data["name"] = f"{src.name} (copy)"
+        self.save_profile(new_filename, data)
+        return new_filename
+
+    def delete_profile(self, filename: str) -> None:
+        # default нельзя удалять
+        if filename == "default.json":
+            raise ValueError("Нельзя удалить default.json")
+        p = self.profiles_dir / filename
+        if p.exists():
+            p.unlink()
+
+        # если удалили активный — откат на default
+        if self.get_active_filename() == filename:
+            self.set_active_filename("default.json")
+
     # ---------- Internal helpers ----------
     def _safe_load_json(self, path: Path) -> Dict[str, Any] | Any:
         try:
-            # ключевое: utf-8-sig проглатывает BOM
             text = path.read_text(encoding="utf-8-sig")
             if not text.strip():
                 return {}
@@ -81,7 +114,6 @@ class ProfileManager:
             )
 
     def _default_profile_dict(self) -> Dict[str, Any]:
-        # Можешь тут настроить значения “по умолчанию”
         return {
             "name": "Default",
             "sample_factor": 20,
