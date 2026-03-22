@@ -1,0 +1,6 @@
+scapy
+pyqt6
+scikit-learn
+joblib
+matplotlib
+numpy
