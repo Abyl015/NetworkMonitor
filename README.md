@@ -55,7 +55,7 @@ Capture (Scapy) → Feature Extraction → Rule Engine + ML Detector → Scoring
 
 ### 2) Установка проекта
 ```powershell
-git clone https://github.com/<your-username>/NetworkMonitor.git
+git clone https://github.com/Abyl015/NetworkMonitor.git
 cd NetworkMonitor
 py -m venv .venv
 .\.venv\Scripts\activate
