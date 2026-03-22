@@ -37,6 +37,9 @@ class NetworkEngine:
         self.last_ib_score = 100
         self.last_ib_level = "Высокий уровень ИБ"
 
+        self.ioc_file = Path(__file__).resolve().parents[1] / "data" / "iocs" / "malicious_ips.txt"
+        self.malicious_ips = self._load_malicious_ips()
+        self.ioc_seen = set()
         # RULES + ML
         self.rules = RuleEngine(sample_factor=self.sample_factor)
         self.ml = self._build_ml(profile_name=self.profile_name, ml_cfg=MLConfig())
@@ -144,7 +147,9 @@ class NetworkEngine:
 
         try:
             init_db()
-
+            self.malicious_ips = self._load_malicious_ips()
+            self.ioc_seen.clear()
+            self._log(f"<b style='color:#89dceb;'>[IOC] Загружено IOC IP: {len(self.malicious_ips)}</b>")
             scapy.conf.sniff_promisc = True
             scapy.conf.verbose = False
 
@@ -201,6 +206,55 @@ class NetworkEngine:
             self.stop_capture()
             self._log("<b style='color:#f38ba8;'>[SYSTEM] Захват остановлен.</b>")
 
+    def analyze_pcap(self, pcap_path: str):
+        if self.running:
+            self._log("<span style='color:#f9e2af;'>[SYSTEM] Сначала остановите текущий захват.</span>")
+            return
+
+        try:
+            init_db()
+            self.malicious_ips = self._load_malicious_ips()
+            self.ioc_seen.clear()
+            self._log(f"<b style='color:#89dceb;'>[IOC] Загружено IOC IP: {len(self.malicious_ips)}</b>")
+            self.running = True
+
+            self._log(f"<b style='color:#89dceb;'>[PCAP] Запуск offline-анализа: {pcap_path}</b>")
+            self._log(
+                f"<b style='color:#89dceb;'>[SYSTEM] Профиль: {self.profile_name} | "
+                f"sampling=1/{self.sample_factor}</b>"
+            )
+
+            processed = 0
+
+            with scapy.PcapReader(pcap_path) as pcap_reader:
+                for pkt in pcap_reader:
+                    if not self.running:
+                        self._log("<span style='color:#f9e2af;'>[PCAP] Анализ остановлен пользователем.</span>")
+                        break
+
+                    self.process_packet(pkt)
+                    processed += 1
+
+                    if processed % 200 == 0:
+                        self._log(f"<i>[PCAP] Обработано пакетов: {processed}</i>")
+
+            self._log(f"<b style='color:#a6e3a1;'>[PCAP] Анализ завершён. Всего пакетов: {processed}</b>")
+
+        except FileNotFoundError:
+            self._log(
+                f"<span style='color:#f38ba8;'>[PCAP ERROR] Файл не найден: {pcap_path}</span>"
+            )
+        except PermissionError as e:
+            self._log(
+                f"<span style='color:#f38ba8;'>[PCAP ERROR] Нет доступа к файлу: {e}</span>"
+            )
+        except Exception as e:
+            self._log(
+                f"<span style='color:#f38ba8;'>[PCAP ERROR] {type(e).__name__}: {e}</span>"
+            )
+        finally:
+            self.running = False
+            self._log("<b style='color:#f38ba8;'>[PCAP] Offline-анализ остановлен.</b>")
     # -------------------------
     # Packet processing
     # -------------------------
@@ -208,14 +262,35 @@ class NetworkEngine:
         try:
             self.packet_count += 1
 
-            if self.sample_factor > 1 and (self.packet_count % self.sample_factor != 0):
-                return
-
             if pkt is None:
                 return
 
-            feat = extract_features(pkt, time.time())
+            packet_ts = float(getattr(pkt, "time", time.time()))
+            feat = extract_features(pkt, packet_ts)
             if feat is None:
+                return
+
+            # IOC проверяем ВСЕГДА, без sampling
+            ioc_ip = self._check_ioc_ip(feat.src_ip, feat.dst_ip)
+            if ioc_ip:
+                local_ip = feat.src_ip if feat.src_ip.startswith(("10.", "192.168.", "172.")) else feat.dst_ip
+                event_key = (feat.src_ip, feat.dst_ip, ioc_ip)
+
+                if event_key not in self.ioc_seen:
+                    self.ioc_seen.add(event_key)
+
+                    self._log(
+                        f"<span style='color:#f38ba8;'>[IOC MATCH] "
+                        f"{feat.src_ip} -> {feat.dst_ip} | IOC IP: {ioc_ip} | possible host: {local_ip}</span>"
+                    )
+
+                    self._safe_db(
+                        "IOC_MATCH",
+                        f"{feat.src_ip} -> {feat.dst_ip} | matched_ip={ioc_ip} | possible_host={local_ip}"
+                    )
+
+            # sampling только для rules/ML/scoring
+            if self.sample_factor > 1 and (self.packet_count % self.sample_factor != 0):
                 return
 
             rule_metrics = self.rules.update(feat)
@@ -295,6 +370,35 @@ class NetworkEngine:
             self._log(
                 f"<span style='color:#f38ba8;'>[ENGINE ERROR] {type(e).__name__}: {e}</span>"
             )
+
+    def _load_malicious_ips(self) -> set[str]:
+        ips = set()
+
+        try:
+            if not self.ioc_file.exists():
+                return ips
+
+            with self.ioc_file.open("r", encoding="utf-8") as f:
+                for raw_line in f:
+                    line = raw_line.strip()
+
+                    if not line or line.startswith("#"):
+                        continue
+
+                    ips.add(line)
+        except Exception as e:
+            self._log(
+                f"<span style='color:#f38ba8;'>[IOC ERROR] Не удалось загрузить IOC IP list: {type(e).__name__}: {e}</span>"
+            )
+
+        return ips
+
+    def _check_ioc_ip(self, src_ip: str, dst_ip: str) -> str | None:
+        if src_ip in self.malicious_ips:
+            return src_ip
+        if dst_ip in self.malicious_ips:
+            return dst_ip
+        return None
 
     # -------------------------
     # Helpers
