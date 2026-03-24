@@ -46,6 +46,11 @@ class NetworkEngine:
         self.reported_infected_hosts = set()
         self.verdict_seen = set()
         self.incidents = {}
+        self.verdict_cooldown_sec = 15
+        self.last_verdict_emit = {}
+
+        self.incident_cooldown_sec = 30
+        self.last_incident_emit = {}
         # RULES + ML
         self.rules = RuleEngine(sample_factor=self.sample_factor)
         self.ml = self._build_ml(profile_name=self.profile_name, ml_cfg=MLConfig())
@@ -645,13 +650,17 @@ class NetworkEngine:
         if verdict == "normal":
             return
 
+        now = time.time()
         reason_text = ", ".join(reasons) if reasons else "без уточнения"
-        event_key = (feat.src_ip, feat.dst_ip, feat.dport, verdict, reason_text)
 
-        if event_key in self.verdict_seen:
+        # Дедуп по потоку и уровню verdict, а не по полному тексту причин
+        key = (feat.src_ip, feat.dst_ip, feat.dport, verdict)
+        last_ts = self.last_verdict_emit.get(key, 0)
+
+        if now - last_ts < self.verdict_cooldown_sec:
             return
 
-        self.verdict_seen.add(event_key)
+        self.last_verdict_emit[key] = now
 
         self._log(
             f"<span style='color:#f9e2af;'>[VERDICT] {verdict.upper()} | "
@@ -760,9 +769,14 @@ class NetworkEngine:
         if verdict == "normal":
             return
 
-        if inc["emitted_verdict"] == verdict:
+        now = time.time()
+        key = (host, verdict)
+        last_ts = self.last_incident_emit.get(key, 0)
+
+        if now - last_ts < self.incident_cooldown_sec:
             return
 
+        self.last_incident_emit[key] = now
         inc["emitted_verdict"] = verdict
 
         summary = (
@@ -847,7 +861,8 @@ class NetworkEngine:
         self.packet_count = 0
         self.total_seen = 0
         self.total_anom = 0
-
+        self.last_verdict_emit.clear()
+        self.last_incident_emit.clear()
         self.last_ib_score = None
         self.last_ib_level = "Оценка не рассчитана"
         self.last_assessment = None
