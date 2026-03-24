@@ -1,0 +1,3 @@
+# one domain per line
+bad-domain.example
+malware-test.example
