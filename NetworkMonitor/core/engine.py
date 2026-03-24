@@ -45,6 +45,7 @@ class NetworkEngine:
         self.infected_host_scores = Counter()
         self.reported_infected_hosts = set()
         self.verdict_seen = set()
+        self.incidents = {}
         # RULES + ML
         self.rules = RuleEngine(sample_factor=self.sample_factor)
         self.ml = self._build_ml(profile_name=self.profile_name, ml_cfg=MLConfig())
@@ -386,6 +387,11 @@ class NetworkEngine:
                         "IOC_MATCH",
                         f"{feat.src_ip} -> {feat.dst_ip} | matched_ip={ioc_ip} | possible_host={local_ip}"
                     )
+                    self._touch_incident(
+                        local_ip,
+                        evidence="ioc_ip",
+                        remote_ip=ioc_ip,
+                    )
 
                     if self._is_private_ip(local_ip):
                         self.infected_host_scores[local_ip] += 1
@@ -404,6 +410,11 @@ class NetworkEngine:
                             self._safe_db(
                                 "INFECTED_HOST_CANDIDATE",
                                 f"host={local_ip} | ioc_hits={self.infected_host_scores[local_ip]}"
+                            )
+
+                            self._touch_incident(
+                                local_ip,
+                                evidence="infected_host_candidate",
                             )
                 # DNS IOC проверяем тоже ВСЕГДА, без sampling
             domain = self._extract_dns_query_name(pkt)
@@ -426,6 +437,12 @@ class NetworkEngine:
                         "IOC_DOMAIN_MATCH",
                         f"{feat.src_ip} -> {feat.dst_ip} | domain={domain} | matched_domain={matched_domain} | "
                         f"possible_host={local_ip}"
+                    )
+                    self._touch_incident(
+                        local_ip,
+                        evidence="ioc_domain",
+                        remote_ip=feat.dst_ip,
+                        domain=matched_domain,
                     )
 
                     if self._is_private_ip(local_ip):
@@ -451,6 +468,21 @@ class NetworkEngine:
                 return
 
             rule_metrics = self.rules.update(feat)
+            local_ip = self._get_possible_local_host(feat.src_ip, feat.dst_ip)
+
+            if bool(rule_metrics.get("scan_rule", False)):
+                self._touch_incident(
+                    local_ip,
+                    evidence="scan_rule",
+                    remote_ip=feat.dst_ip,
+                )
+
+            if bool(rule_metrics.get("dos_rule", False)):
+                self._touch_incident(
+                    local_ip,
+                    evidence="dos_rule",
+                    remote_ip=feat.dst_ip,
+                )
             x = [feat.length, feat.proto, feat.dport]
             ioc_ip_hit = ioc_ip is not None
             ioc_domain_hit = matched_domain is not None
@@ -502,6 +534,12 @@ class NetworkEngine:
                 self._safe_db(
                     "ML_ANOMALY",
                     f"{feat.src_ip} -> {feat.dst_ip} dport={feat.dport}",
+                )
+                local_ip = self._get_possible_local_host(feat.src_ip, feat.dst_ip)
+                self._touch_incident(
+                    local_ip,
+                    evidence="ml_anomaly",
+                    remote_ip=feat.dst_ip,
                 )
 
                 if self.attacker_stats[feat.src_ip] % 5 == 0:
@@ -680,6 +718,107 @@ class NetworkEngine:
         except ValueError:
             return False
 
+    def _new_incident(self, host: str) -> dict:
+        return {
+            "host": host,
+            "first_seen": time.time(),
+            "last_seen": time.time(),
+            "ioc_ip_hits": 0,
+            "ioc_domain_hits": 0,
+            "ml_hits": 0,
+            "scan_hits": 0,
+            "dos_hits": 0,
+            "infected_host": False,
+            "remote_ips": set(),
+            "domains": set(),
+            "emitted_verdict": None,
+        }
+
+    def _incident_verdict(self, inc: dict) -> str:
+        # IOC + любой другой сигнал = malicious
+        if (inc["ioc_ip_hits"] > 0 or inc["ioc_domain_hits"] > 0) and (
+                inc["ml_hits"] > 0 or inc["scan_hits"] > 0 or inc["dos_hits"] > 0 or inc["infected_host"]
+        ):
+            return "malicious"
+
+        # IOC сам по себе тоже достаточно сильный сигнал
+        if inc["ioc_ip_hits"] > 0 or inc["ioc_domain_hits"] > 0:
+            return "malicious"
+
+        # Несколько аномалий или rule-hit = suspicious
+        if inc["scan_hits"] > 0 or inc["dos_hits"] > 0 or inc["ml_hits"] >= 3 or inc["infected_host"]:
+            return "suspicious"
+
+        return "normal"
+
+    def _emit_incident_if_needed(self, host: str):
+        inc = self.incidents.get(host)
+        if not inc:
+            return
+
+        verdict = self._incident_verdict(inc)
+        if verdict == "normal":
+            return
+
+        if inc["emitted_verdict"] == verdict:
+            return
+
+        inc["emitted_verdict"] = verdict
+
+        summary = (
+            f"host={host} | verdict={verdict} | "
+            f"ioc_ip={inc['ioc_ip_hits']} | "
+            f"ioc_domain={inc['ioc_domain_hits']} | "
+            f"ml={inc['ml_hits']} | "
+            f"scan={inc['scan_hits']} | "
+            f"dos={inc['dos_hits']} | "
+            f"remote_ips={len(inc['remote_ips'])} | "
+            f"domains={len(inc['domains'])}"
+        )
+
+        self._log(
+            f"<b style='color:#f38ba8;'>[INCIDENT] {verdict.upper()} | {summary}</b>"
+        )
+
+        self._safe_db("INCIDENT", summary)
+
+    def _touch_incident(
+            self,
+            host: str,
+            *,
+            evidence: str,
+            remote_ip: str | None = None,
+            domain: str | None = None,
+    ):
+        if not host or not self._is_private_ip(host):
+            return
+
+        inc = self.incidents.get(host)
+        if inc is None:
+            inc = self._new_incident(host)
+            self.incidents[host] = inc
+
+        inc["last_seen"] = time.time()
+
+        if remote_ip:
+            inc["remote_ips"].add(remote_ip)
+        if domain:
+            inc["domains"].add(domain)
+
+        if evidence == "ioc_ip":
+            inc["ioc_ip_hits"] += 1
+        elif evidence == "ioc_domain":
+            inc["ioc_domain_hits"] += 1
+        elif evidence == "ml_anomaly":
+            inc["ml_hits"] += 1
+        elif evidence == "scan_rule":
+            inc["scan_hits"] += 1
+        elif evidence == "dos_rule":
+            inc["dos_hits"] += 1
+        elif evidence == "infected_host_candidate":
+            inc["infected_host"] = True
+
+        self._emit_incident_if_needed(host)
     def _build_ml(self, profile_name: str, ml_cfg: MLConfig) -> MLDetector:
         pkg_dir = Path(__file__).resolve().parents[1]
         models_dir = pkg_dir / "storage" / "models"
@@ -702,6 +841,8 @@ class NetworkEngine:
             )
 
     def _reset_runtime_state(self):
+        if hasattr(self, "incidents"):
+            self.incidents.clear()
         self.attacker_stats.clear()
         self.packet_count = 0
         self.total_seen = 0
