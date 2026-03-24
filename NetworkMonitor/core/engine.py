@@ -38,6 +38,9 @@ class NetworkEngine:
 
         self.ioc_file = Path(__file__).resolve().parents[1] / "data" / "iocs" / "malicious_ips.txt"
         self.malicious_ips = self._load_malicious_ips()
+        self.domain_ioc_file = Path(__file__).resolve().parents[1] / "data" / "iocs" / "malicious_domains.txt"
+        self.malicious_domains = self._load_malicious_domains()
+        self.domain_ioc_seen = set()
         self.ioc_seen = set()
         self.infected_host_scores = Counter()
         self.reported_infected_hosts = set()
@@ -116,6 +119,75 @@ class NetworkEngine:
                 f"Нужно обучить ML ({self.ml.cfg.train_size} пакетов).</b>"
             )
 
+    def _load_malicious_domains(self) -> set[str]:
+        domains = set()
+
+        try:
+            if not self.domain_ioc_file.exists():
+                return domains
+
+            with self.domain_ioc_file.open("r", encoding="utf-8") as f:
+                for raw_line in f:
+                    line = raw_line.strip().lower()
+
+                    if not line or line.startswith("#"):
+                        continue
+
+                    domains.add(line)
+        except Exception as e:
+            self._log(
+                f"<span style='color:#f38ba8;'>[IOC ERROR] Не удалось загрузить IOC domain list: "
+                f"{type(e).__name__}: {e}</span>"
+            )
+
+        return domains
+
+    def _extract_dns_query_name(self, pkt) -> str | None:
+        try:
+            if not pkt.haslayer(scapy.DNS) or not pkt.haslayer(scapy.DNSQR):
+                return None
+
+            dns_layer = pkt[scapy.DNS]
+
+            # только DNS-запросы, не ответы
+            if getattr(dns_layer, "qr", 1) != 0:
+                return None
+
+            qname = pkt[scapy.DNSQR].qname
+            if not qname:
+                return None
+
+            if isinstance(qname, bytes):
+                qname = qname.decode("utf-8", errors="ignore")
+
+            qname = str(qname).strip().rstrip(".").lower()
+            return qname or None
+        except Exception:
+            return None
+
+    def _check_ioc_domain(self, domain: str) -> str | None:
+        if not domain:
+            return None
+
+        domain = domain.strip().lower()
+
+        # exact match
+        if domain in self.malicious_domains:
+            return domain
+
+        # subdomain match
+        for bad_domain in self.malicious_domains:
+            if domain.endswith("." + bad_domain):
+                return bad_domain
+
+        return None
+
+    def _get_possible_local_host(self, src_ip: str, dst_ip: str) -> str:
+        if self._is_private_ip(src_ip):
+            return src_ip
+        if self._is_private_ip(dst_ip):
+            return dst_ip
+        return src_ip
     # -------------------------
     # Capture
     # -------------------------
@@ -150,6 +222,9 @@ class NetworkEngine:
             init_db()
             self._reset_runtime_state()
             self.malicious_ips = self._load_malicious_ips()
+            self.domain_ioc_file = Path(__file__).resolve().parents[1] / "data" / "iocs" / "malicious_domains.txt"
+            self.malicious_domains = self._load_malicious_domains()
+            self.domain_ioc_seen = set()
             self.ioc_seen.clear()
             self.infected_host_scores.clear()
             self.reported_infected_hosts.clear()
@@ -219,6 +294,7 @@ class NetworkEngine:
             init_db()
             self._reset_runtime_state()
             self.malicious_ips = self._load_malicious_ips()
+            self.malicious_domains = self._load_malicious_domains()
             self.ioc_seen.clear()
             self.infected_host_scores.clear()
             self.reported_infected_hosts.clear()
@@ -278,7 +354,6 @@ class NetworkEngine:
                 return
 
             # IOC проверяем ВСЕГДА, без sampling
-            # IOC проверяем ВСЕГДА, без sampling
             ioc_ip = self._check_ioc_ip(feat.src_ip, feat.dst_ip)
             if ioc_ip:
                 local_ip = feat.src_ip if self._is_private_ip(feat.src_ip) else feat.dst_ip
@@ -315,7 +390,47 @@ class NetworkEngine:
                                 "INFECTED_HOST_CANDIDATE",
                                 f"host={local_ip} | ioc_hits={self.infected_host_scores[local_ip]}"
                             )
+                # DNS IOC проверяем тоже ВСЕГДА, без sampling
+            domain = self._extract_dns_query_name(pkt)
+            matched_domain = self._check_ioc_domain(domain) if domain else None
 
+            if matched_domain and feat:
+                local_ip = self._get_possible_local_host(feat.src_ip, feat.dst_ip)
+                domain_event_key = (feat.src_ip, feat.dst_ip, matched_domain)
+
+                if domain_event_key not in self.domain_ioc_seen:
+                    self.domain_ioc_seen.add(domain_event_key)
+
+                    self._log(
+                        f"<span style='color:#f38ba8;'>[IOC DOMAIN MATCH] "
+                        f"{feat.src_ip} -> {feat.dst_ip} | domain: {domain} | matched: {matched_domain} | "
+                        f"possible host: {local_ip}</span>"
+                    )
+
+                    self._safe_db(
+                        "IOC_DOMAIN_MATCH",
+                        f"{feat.src_ip} -> {feat.dst_ip} | domain={domain} | matched_domain={matched_domain} | "
+                        f"possible_host={local_ip}"
+                    )
+
+                    if self._is_private_ip(local_ip):
+                        self.infected_host_scores[local_ip] += 1
+
+                        if (
+                                self.infected_host_scores[local_ip] >= 3
+                                and local_ip not in self.reported_infected_hosts
+                        ):
+                            self.reported_infected_hosts.add(local_ip)
+
+                            self._log(
+                                f"<b style='color:#f38ba8;'>[INFECTED HOST CANDIDATE] "
+                                f"{local_ip} repeatedly communicated with IOC infrastructure</b>"
+                            )
+
+                            self._safe_db(
+                                "INFECTED_HOST_CANDIDATE",
+                                f"host={local_ip} | ioc_hits={self.infected_host_scores[local_ip]}"
+                            )
             # sampling только для rules/ML/scoring
             if self.sample_factor > 1 and (self.packet_count % self.sample_factor != 0):
                 return
@@ -364,7 +479,7 @@ class NetworkEngine:
                     "pps": rule_metrics.get("pps", 0.0),
                     "pps_eff": rule_metrics.get("pps_eff", rule_metrics.get("pps", 0.0)),
                     "anom_rate": anom_rate,
-                    "ioc_matches": len(self.ioc_seen),
+                    "ioc_matches": len(self.ioc_seen) + len(self.domain_ioc_seen),
                     "infected_hosts": len(self.reported_infected_hosts),
                     "observed_packets": self.total_seen,
                 }
@@ -451,6 +566,30 @@ class NetworkEngine:
     # -------------------------
     # Helpers
     # -------------------------
+    def _classify_event(self, *, ioc_ip=False, ioc_domain=False, scan_rule=False,
+                        dos_rule=False, infected_host=False, ml_anomaly=False):
+        reasons = []
+
+        if ioc_ip:
+            reasons.append("совпадение с IOC IP")
+        if ioc_domain:
+            reasons.append("совпадение с IOC domain")
+        if infected_host:
+            reasons.append("подозрение на компрометацию внутреннего хоста")
+        if scan_rule:
+            reasons.append("признаки сканирования")
+        if dos_rule:
+            reasons.append("признаки flood/DoS")
+        if ml_anomaly:
+            reasons.append("обнаружена ML-анomaly")
+
+        if ioc_ip or ioc_domain:
+            return "malicious", reasons
+        if infected_host or scan_rule or dos_rule:
+            return "suspicious", reasons
+        if ml_anomaly:
+            return "anomaly", reasons
+        return "normal", reasons
     def _is_private_ip(self, ip: str) -> bool:
         try:
             return ipaddress.ip_address(ip).is_private
