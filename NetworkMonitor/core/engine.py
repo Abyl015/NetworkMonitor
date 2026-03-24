@@ -44,6 +44,7 @@ class NetworkEngine:
         self.ioc_seen = set()
         self.infected_host_scores = Counter()
         self.reported_infected_hosts = set()
+        self.verdict_seen = set()
         # RULES + ML
         self.rules = RuleEngine(sample_factor=self.sample_factor)
         self.ml = self._build_ml(profile_name=self.profile_name, ml_cfg=MLConfig())
@@ -221,14 +222,20 @@ class NetworkEngine:
         try:
             init_db()
             self._reset_runtime_state()
+
             self.malicious_ips = self._load_malicious_ips()
-            self.domain_ioc_file = Path(__file__).resolve().parents[1] / "data" / "iocs" / "malicious_domains.txt"
             self.malicious_domains = self._load_malicious_domains()
-            self.domain_ioc_seen = set()
+
             self.ioc_seen.clear()
+            self.domain_ioc_seen.clear()
             self.infected_host_scores.clear()
             self.reported_infected_hosts.clear()
-            self._log(f"<b style='color:#89dceb;'>[IOC] Загружено IOC IP: {len(self.malicious_ips)}</b>")
+            self.verdict_seen.clear()
+
+            self._log(
+                f"<b style='color:#89dceb;'>[IOC] Загружено IOC IP: {len(self.malicious_ips)} | "
+                f"IOC domains: {len(self.malicious_domains)}</b>"
+            )
             scapy.conf.sniff_promisc = True
             scapy.conf.verbose = False
 
@@ -293,12 +300,20 @@ class NetworkEngine:
         try:
             init_db()
             self._reset_runtime_state()
+
             self.malicious_ips = self._load_malicious_ips()
             self.malicious_domains = self._load_malicious_domains()
+
             self.ioc_seen.clear()
+            self.domain_ioc_seen.clear()
             self.infected_host_scores.clear()
             self.reported_infected_hosts.clear()
-            self._log(f"<b style='color:#89dceb;'>[IOC] Загружено IOC IP: {len(self.malicious_ips)}</b>")
+            self.verdict_seen.clear()
+
+            self._log(
+                f"<b style='color:#89dceb;'>[IOC] Загружено IOC IP: {len(self.malicious_ips)} | "
+                f"IOC domains: {len(self.malicious_domains)}</b>"
+            )
             self.running = True
 
             self._log(f"<b style='color:#89dceb;'>[PCAP] Запуск offline-анализа: {pcap_path}</b>")
@@ -436,9 +451,23 @@ class NetworkEngine:
                 return
 
             rule_metrics = self.rules.update(feat)
-
             x = [feat.length, feat.proto, feat.dport]
+            ioc_ip_hit = ioc_ip is not None
+            ioc_domain_hit = matched_domain is not None
+            event_local_ip = self._get_possible_local_host(feat.src_ip, feat.dst_ip)
+            infected_flag = event_local_ip in self.reported_infected_hosts
+            scan_rule_flag = bool(rule_metrics.get("scan_rule", False))
+            dos_rule_flag = bool(rule_metrics.get("dos_rule", False))
 
+            verdict, reasons = self._classify_event(
+                ioc_ip=ioc_ip_hit,
+                ioc_domain=ioc_domain_hit,
+                scan_rule=scan_rule_flag,
+                dos_rule=dos_rule_flag,
+                infected_host=infected_flag,
+                ml_anomaly=False,
+            )
+            self._emit_verdict(feat, verdict, reasons)
             # training
             if not self.ml.is_trained:
                 n = self.ml.add_train_sample(x)
@@ -458,7 +487,15 @@ class NetworkEngine:
             # inference
             self.total_seen += 1
             is_anom = self.ml.predict_is_anomaly(x)
-
+            verdict, reasons = self._classify_event(
+                ioc_ip=ioc_ip_hit,
+                ioc_domain=ioc_domain_hit,
+                scan_rule=scan_rule_flag,
+                dos_rule=dos_rule_flag,
+                infected_host=infected_flag,
+                ml_anomaly=is_anom,
+            )
+            self._emit_verdict(feat, verdict, reasons)
             if is_anom:
                 self.total_anom += 1
                 self.attacker_stats[feat.src_ip] += 1
@@ -486,7 +523,7 @@ class NetworkEngine:
                 flags = {
                     "scan_rule": bool(rule_metrics.get("scan_rule", False)),
                     "dos_rule": bool(rule_metrics.get("dos_rule", False)),
-                    "ioc_match": len(self.ioc_seen) > 0,
+                    "ioc_match": (len(self.ioc_seen) + len(self.domain_ioc_seen)) > 0,
                     "infected_host_candidate": len(self.reported_infected_hosts) > 0,
                 }
 
@@ -566,6 +603,28 @@ class NetworkEngine:
     # -------------------------
     # Helpers
     # -------------------------
+    def _emit_verdict(self, feat, verdict: str, reasons: list[str]):
+        if verdict == "normal":
+            return
+
+        reason_text = ", ".join(reasons) if reasons else "без уточнения"
+        event_key = (feat.src_ip, feat.dst_ip, feat.dport, verdict, reason_text)
+
+        if event_key in self.verdict_seen:
+            return
+
+        self.verdict_seen.add(event_key)
+
+        self._log(
+            f"<span style='color:#f9e2af;'>[VERDICT] {verdict.upper()} | "
+            f"{feat.src_ip} -> {feat.dst_ip} | dport={feat.dport} | reasons: {reason_text}</span>"
+        )
+
+        self._safe_db(
+            "EVENT_VERDICT",
+            f"verdict={verdict} | src={feat.src_ip} | dst={feat.dst_ip} | "
+            f"dport={feat.dport} | reasons={reason_text}"
+        )
     def _classify_event(self, *, ioc_ip=False, ioc_domain=False, scan_rule=False,
                         dos_rule=False, infected_host=False, ml_anomaly=False):
         reasons = []
