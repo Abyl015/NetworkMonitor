@@ -625,30 +625,55 @@ class NetworkEngine:
             f"verdict={verdict} | src={feat.src_ip} | dst={feat.dst_ip} | "
             f"dport={feat.dport} | reasons={reason_text}"
         )
-    def _classify_event(self, *, ioc_ip=False, ioc_domain=False, scan_rule=False,
-                        dos_rule=False, infected_host=False, ml_anomaly=False):
+
+    def _classify_event(
+            self,
+            *,
+            ioc_ip: bool = False,
+            ioc_domain: bool = False,
+            scan_rule: bool = False,
+            dos_rule: bool = False,
+            infected_host: bool = False,
+            ml_anomaly: bool = False,
+    ):
         reasons = []
 
         if ioc_ip:
             reasons.append("совпадение с IOC IP")
         if ioc_domain:
             reasons.append("совпадение с IOC domain")
-        if infected_host:
-            reasons.append("подозрение на компрометацию внутреннего хоста")
         if scan_rule:
             reasons.append("признаки сканирования")
         if dos_rule:
             reasons.append("признаки flood/DoS")
         if ml_anomaly:
-            reasons.append("обнаружена ML-анomaly")
+            reasons.append("обнаружена ML-anomaly")
 
+        infected_reason = "подозрение на компрометацию внутреннего хоста"
+
+        # 1. IOC = сразу malicious
         if ioc_ip or ioc_domain:
+            if infected_host:
+                reasons.append(infected_reason)
             return "malicious", reasons
-        if infected_host or scan_rule or dos_rule:
+
+        # 2. Явные rule-hit = suspicious
+        if scan_rule or dos_rule:
+            if infected_host:
+                reasons.append(infected_reason)
             return "suspicious", reasons
+
+        # 3. ML anomaly + infected host = suspicious
+        if ml_anomaly and infected_host:
+            reasons.append(infected_reason)
+            return "suspicious", reasons
+
+        # 4. Только ML anomaly = anomaly
         if ml_anomaly:
             return "anomaly", reasons
-        return "normal", reasons
+
+        # 5. Только infected_host сам по себе verdict не поднимает
+        return "normal", []
     def _is_private_ip(self, ip: str) -> bool:
         try:
             return ipaddress.ip_address(ip).is_private
