@@ -5,12 +5,11 @@ import time
 from pathlib import Path
 from collections import Counter
 from typing import Optional
-
 import scapy.all as scapy
-
+import ipaddress
 from NetworkMonitor.core.features import extract_features
 from NetworkMonitor.core.rules import RuleEngine
-from NetworkMonitor.core.scoring import calc_ib_score
+from NetworkMonitor.core.scoring import calc_security_assessment, format_assessment_line
 from NetworkMonitor.core.ml import MLDetector, MLConfig
 from NetworkMonitor.storage.database import init_db, add_alert
 
@@ -40,6 +39,8 @@ class NetworkEngine:
         self.ioc_file = Path(__file__).resolve().parents[1] / "data" / "iocs" / "malicious_ips.txt"
         self.malicious_ips = self._load_malicious_ips()
         self.ioc_seen = set()
+        self.infected_host_scores = Counter()
+        self.reported_infected_hosts = set()
         # RULES + ML
         self.rules = RuleEngine(sample_factor=self.sample_factor)
         self.ml = self._build_ml(profile_name=self.profile_name, ml_cfg=MLConfig())
@@ -147,8 +148,11 @@ class NetworkEngine:
 
         try:
             init_db()
+            self._reset_runtime_state()
             self.malicious_ips = self._load_malicious_ips()
             self.ioc_seen.clear()
+            self.infected_host_scores.clear()
+            self.reported_infected_hosts.clear()
             self._log(f"<b style='color:#89dceb;'>[IOC] Загружено IOC IP: {len(self.malicious_ips)}</b>")
             scapy.conf.sniff_promisc = True
             scapy.conf.verbose = False
@@ -213,8 +217,11 @@ class NetworkEngine:
 
         try:
             init_db()
+            self._reset_runtime_state()
             self.malicious_ips = self._load_malicious_ips()
             self.ioc_seen.clear()
+            self.infected_host_scores.clear()
+            self.reported_infected_hosts.clear()
             self._log(f"<b style='color:#89dceb;'>[IOC] Загружено IOC IP: {len(self.malicious_ips)}</b>")
             self.running = True
 
@@ -271,9 +278,10 @@ class NetworkEngine:
                 return
 
             # IOC проверяем ВСЕГДА, без sampling
+            # IOC проверяем ВСЕГДА, без sampling
             ioc_ip = self._check_ioc_ip(feat.src_ip, feat.dst_ip)
             if ioc_ip:
-                local_ip = feat.src_ip if feat.src_ip.startswith(("10.", "192.168.", "172.")) else feat.dst_ip
+                local_ip = feat.src_ip if self._is_private_ip(feat.src_ip) else feat.dst_ip
                 event_key = (feat.src_ip, feat.dst_ip, ioc_ip)
 
                 if event_key not in self.ioc_seen:
@@ -288,6 +296,25 @@ class NetworkEngine:
                         "IOC_MATCH",
                         f"{feat.src_ip} -> {feat.dst_ip} | matched_ip={ioc_ip} | possible_host={local_ip}"
                     )
+
+                    if self._is_private_ip(local_ip):
+                        self.infected_host_scores[local_ip] += 1
+
+                        if (
+                                self.infected_host_scores[local_ip] >= 3
+                                and local_ip not in self.reported_infected_hosts
+                        ):
+                            self.reported_infected_hosts.add(local_ip)
+
+                            self._log(
+                                f"<b style='color:#f38ba8;'>[INFECTED HOST CANDIDATE] "
+                                f"{local_ip} repeatedly communicated with IOC IPs</b>"
+                            )
+
+                            self._safe_db(
+                                "INFECTED_HOST_CANDIDATE",
+                                f"host={local_ip} | ioc_hits={self.infected_host_scores[local_ip]}"
+                            )
 
             # sampling только для rules/ML/scoring
             if self.sample_factor > 1 and (self.packet_count % self.sample_factor != 0):
@@ -337,21 +364,42 @@ class NetworkEngine:
                     "pps": rule_metrics.get("pps", 0.0),
                     "pps_eff": rule_metrics.get("pps_eff", rule_metrics.get("pps", 0.0)),
                     "anom_rate": anom_rate,
+                    "ioc_matches": len(self.ioc_seen),
+                    "infected_hosts": len(self.reported_infected_hosts),
+                    "observed_packets": self.total_seen,
                 }
                 flags = {
                     "scan_rule": bool(rule_metrics.get("scan_rule", False)),
                     "dos_rule": bool(rule_metrics.get("dos_rule", False)),
+                    "ioc_match": len(self.ioc_seen) > 0,
+                    "infected_host_candidate": len(self.reported_infected_hosts) > 0,
                 }
 
-                ib_score, total_risk, risks, level = calc_ib_score(metrics, flags)
-                self.last_ib_score = ib_score
-                self.last_ib_level = level
+                assessment = calc_security_assessment(metrics, flags)
+
+                self.last_ib_score = assessment["overall_score"]
+                self.last_ib_level = assessment["security_level"]
+                self.last_assessment = assessment
+                self.assessment_ready = True
 
                 self._log(
-                    f"<span style='color:#f9e2af;'>[ИБ] Score={ib_score}/100 — {level} | "
-                    f"scan={risks['Port Scan']:.2f} "
-                    f"dos={risks['DoS/Flood']:.2f} "
-                    f"ml={risks['ML Anomaly']:.2f}</span>"
+                    f"<span style='color:#f9e2af;'>{format_assessment_line(assessment)}</span>"
+                )
+
+                self._log(
+                    f"<span style='color:#cdd6f4;'>"
+                    f"Сетевой риск={assessment['components']['network_risk']:.2f} | "
+                    f"ML риск={assessment['components']['ml_risk']:.2f} | "
+                    f"IOC риск={assessment['components']['ioc_risk']:.2f} | "
+                    f"Риск компрометации хоста={assessment['components']['host_compromise_risk']:.2f}"
+                    f"</span>"
+                )
+
+                self._log(
+                    f"<span style='color:#bac2de;'>"
+                    f"Достоверность={assessment['confidence']} | "
+                    f"Вывод: {assessment['summary']}"
+                    f"</span>"
                 )
 
                 if flags["scan_rule"]:
@@ -403,6 +451,12 @@ class NetworkEngine:
     # -------------------------
     # Helpers
     # -------------------------
+    def _is_private_ip(self, ip: str) -> bool:
+        try:
+            return ipaddress.ip_address(ip).is_private
+        except ValueError:
+            return False
+
     def _build_ml(self, profile_name: str, ml_cfg: MLConfig) -> MLDetector:
         pkg_dir = Path(__file__).resolve().parents[1]
         models_dir = pkg_dir / "storage" / "models"
@@ -429,8 +483,11 @@ class NetworkEngine:
         self.packet_count = 0
         self.total_seen = 0
         self.total_anom = 0
-        self.last_ib_score = 100
-        self.last_ib_level = "Высокий уровень ИБ"
+
+        self.last_ib_score = None
+        self.last_ib_level = "Оценка не рассчитана"
+        self.last_assessment = None
+        self.assessment_ready = False
 
     def _log(self, msg: str):
         if self.callback:

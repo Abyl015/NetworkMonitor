@@ -3,8 +3,6 @@ from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent
 STORAGE_DIR = BASE_DIR / "storage"
-STORAGE_DIR.mkdir(parents=True, exist_ok=True)
-
 DB_PATH = STORAGE_DIR / "traffic_data.db"
 
 
@@ -34,3 +32,13 @@ def add_alert(alert_type, description):
             (alert_type, description)
         )
         conn.commit()
+
+
+def get_recent_alerts(limit=50):
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT id, timestamp, alert_type, description FROM alerts ORDER BY id DESC LIMIT ?",
+            (limit,)
+        )
+        return cursor.fetchall()
