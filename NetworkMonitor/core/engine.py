@@ -261,7 +261,7 @@ class NetworkEngine:
         ]
 
     def _is_service_discovery_noise(self, feat) -> bool:
-        service_ports = {5353, 1900, 137, 138}
+        service_ports = {5353, 1900, 3702, 5355, 137, 138}
         if feat.is_multicast:
             return True
         return feat.sport in service_ports or feat.dport in service_ports
@@ -570,8 +570,18 @@ class NetworkEngine:
             # sampling только для rules/ML/scoring
             if self.sample_factor > 1 and (self.packet_count % self.sample_factor != 0):
                 return
+            if self._is_service_discovery_noise(feat):
+                rule_metrics = {
+                    "pps": 0.0,
+                    "pps_eff": 0.0,
+                    "unique_ports_src": 0,
+                    "unique_ports_max": 0,
+                    "scan_rule": False,
+                    "dos_rule": False,
+                }
+            else:
+                rule_metrics = self.rules.update(feat)
 
-            rule_metrics = self.rules.update(feat)
             local_ip = self._get_possible_local_host(feat.src_ip, feat.dst_ip)
 
             if bool(rule_metrics.get("scan_rule", False)):

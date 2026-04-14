@@ -6,7 +6,7 @@ class RuleEngine:
     """
     Правила:
     - Port scan: много уникальных портов от одного src_ip
-    - Flood: высокий PPS по окну (с учетом sampling)
+    - Flood: высокий PPS по одному src_ip в окне
     """
 
     def __init__(
@@ -21,30 +21,31 @@ class RuleEngine:
         self.scan_ports_threshold = int(scan_ports_threshold)
         self.dos_pps_eff_threshold = int(dos_pps_eff_threshold)
 
-        # ✅ ВОТ ЭТО ОБЯЗАТЕЛЬНО (иначе AttributeError)
         self.ports_by_src = defaultdict(set)
-        self.packets_window = deque()  # timestamps
+        self.packets_window_by_src = defaultdict(deque)
 
-        # статистика
         self.last_pps = 0.0
         self.last_pps_eff = 0.0
 
     def update(self, feat) -> Dict[str, object]:
         now = feat.ts
+        src = feat.src_ip
 
-        # окно PPS
-        self.packets_window.append(now)
-        while self.packets_window and (now - self.packets_window[0]) > self.pps_window_sec:
-            self.packets_window.popleft()
+        # PPS окно по конкретному src_ip
+        q = self.packets_window_by_src[src]
+        q.append(now)
 
-        self.last_pps = len(self.packets_window) / float(self.pps_window_sec)
+        while q and (now - q[0]) > self.pps_window_sec:
+            q.popleft()
+
+        self.last_pps = len(q) / float(self.pps_window_sec)
         self.last_pps_eff = self.last_pps * self.sample_factor
 
-        # порт-скан (накопительный)
+        # порт-скан по src_ip
         if feat.dport:
-            self.ports_by_src[feat.src_ip].add(feat.dport)
+            self.ports_by_src[src].add(feat.dport)
 
-        unique_ports = len(self.ports_by_src[feat.src_ip])
+        unique_ports = len(self.ports_by_src[src])
         unique_ports_max = max((len(s) for s in self.ports_by_src.values()), default=0)
 
         scan_rule = unique_ports >= self.scan_ports_threshold

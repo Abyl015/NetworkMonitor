@@ -5,7 +5,7 @@
   "scan_ports_threshold": 50,
   "dos_pps_eff_threshold": 100,
   "ml": {
-    "train_size": 500,
+    "train_size": 2000,
     "contamination": 0.005,
     "n_estimators": 50
   }
