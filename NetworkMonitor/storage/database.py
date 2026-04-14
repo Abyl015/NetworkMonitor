@@ -1,13 +1,14 @@
 import sqlite3
 from pathlib import Path
 
-BASE_DIR = Path(__file__).resolve().parent
-STORAGE_DIR = BASE_DIR / "storage"
+STORAGE_DIR = Path(__file__).resolve().parent
+STORAGE_DIR.mkdir(parents=True, exist_ok=True)
+
 DB_PATH = STORAGE_DIR / "traffic_data.db"
 
 
 def get_connection():
-    return sqlite3.connect(DB_PATH)
+    return sqlite3.connect(str(DB_PATH))
 
 
 def init_db():
