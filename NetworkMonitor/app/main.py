@@ -1,13 +1,23 @@
-# NetworkMonitor/app/main.py
 from __future__ import annotations
 
 import sys
 from pathlib import Path
 
 from PyQt6.QtWidgets import (
-    QApplication, QMainWindow, QTextEdit, QVBoxLayout, QHBoxLayout,
-    QWidget, QPushButton, QLabel, QListWidget, QMessageBox,
-    QFileDialog, QFrame, QGridLayout
+    QApplication,
+    QMainWindow,
+    QTextEdit,
+    QVBoxLayout,
+    QHBoxLayout,
+    QWidget,
+    QPushButton,
+    QLabel,
+    QListWidget,
+    QMessageBox,
+    QFileDialog,
+    QFrame,
+    QGridLayout,
+    QStackedWidget,
 )
 from PyQt6.QtCore import Qt, QTimer
 
@@ -34,7 +44,7 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("AI Network Guardian v2.0")
-        self.resize(1200, 720)
+        self.resize(1280, 760)
 
         self.engine = NetworkEngine(callback=None)
         self.worker: CaptureWorker | None = None
@@ -42,9 +52,70 @@ class MainWindow(QMainWindow):
         self.current_mode = "idle"
         self.last_pcap_path: str | None = None
 
+        self._build_ui()
 
-        # -------- UI --------
-        main_layout = QHBoxLayout()
+        self.append_log("<b style='color:#89dceb;'>[SYSTEM] Готово. Нажми 'Запустить мониторинг'.</b>")
+
+        # применяем профиль ПОСЛЕ UI
+        self.apply_profile_on_startup()
+
+        if export_reports is None:
+            self.export_btn.setEnabled(False)
+            self.export_btn.setToolTip("Модуль NetworkMonitor.reports.export не найден")
+
+        # Таймер: раз в 1 сек обновляем графики из текущих значений engine
+        self.timer = QTimer(self)
+        self.timer.setInterval(1000)
+        self.timer.timeout.connect(self.refresh_graphs)
+        self.timer.start()
+
+    def _build_ui(self) -> None:
+        root = QWidget()
+        root_layout = QHBoxLayout(root)
+        root_layout.setContentsMargins(0, 0, 0, 0)
+        root_layout.setSpacing(0)
+
+        sidebar = QWidget()
+        sidebar.setObjectName("sidebar")
+        nav_layout = QVBoxLayout(sidebar)
+        nav_layout.setContentsMargins(14, 16, 14, 16)
+        nav_layout.setSpacing(8)
+
+        nav_title = QLabel("SENTINEL")
+        nav_title.setObjectName("nav_title")
+        nav_layout.addWidget(nav_title)
+
+        self.main_nav_btn = QPushButton("Main")
+        self.main_nav_btn.setCheckable(True)
+        self.main_nav_btn.clicked.connect(lambda: self.switch_page(0))
+        nav_layout.addWidget(self.main_nav_btn)
+
+        self.pcap_nav_btn = QPushButton("PCAP")
+        self.pcap_nav_btn.setCheckable(True)
+        self.pcap_nav_btn.clicked.connect(lambda: self.switch_page(1))
+        nav_layout.addWidget(self.pcap_nav_btn)
+
+        self.settings_nav_btn = QPushButton("Settings/Profile")
+        self.settings_nav_btn.setCheckable(True)
+        self.settings_nav_btn.clicked.connect(lambda: self.switch_page(2))
+        nav_layout.addWidget(self.settings_nav_btn)
+        nav_layout.addStretch(1)
+
+        self.pages = QStackedWidget()
+        self.pages.addWidget(self._build_main_page())
+        self.pages.addWidget(self._build_pcap_page())
+        self.pages.addWidget(self._build_settings_page())
+
+        root_layout.addWidget(sidebar, stretch=0)
+        root_layout.addWidget(self.pages, stretch=1)
+
+        self.setCentralWidget(root)
+        self.switch_page(0)
+
+    def _build_main_page(self) -> QWidget:
+        page = QWidget()
+        main_layout = QHBoxLayout(page)
+        main_layout.setContentsMargins(14, 14, 14, 14)
 
         # Left
         left_layout = QVBoxLayout()
@@ -88,12 +159,9 @@ class MainWindow(QMainWindow):
         btn_row = QHBoxLayout()
 
         self.action_btn = QPushButton("ЗАПУСТИТЬ МОНИТОРИНГ")
+        self.action_btn.setObjectName("primary_btn")
         self.action_btn.clicked.connect(self.toggle_monitoring)
         btn_row.addWidget(self.action_btn)
-
-        self.pcap_btn = QPushButton("ОТКРЫТЬ PCAP")
-        self.pcap_btn.clicked.connect(self.open_pcap)
-        btn_row.addWidget(self.pcap_btn)
 
         self.settings_btn = QPushButton("ПРОФИЛИ / НАСТРОЙКИ")
         self.settings_btn.clicked.connect(self.open_settings)
@@ -122,26 +190,73 @@ class MainWindow(QMainWindow):
 
         main_layout.addLayout(left_layout, stretch=3)
         main_layout.addLayout(right_layout, stretch=2)
+        return page
 
-        container = QWidget()
-        container.setLayout(main_layout)
-        self.setCentralWidget(container)
+    def _build_pcap_page(self) -> QWidget:
+        page = QWidget()
+        layout = QVBoxLayout(page)
+        layout.setContentsMargins(14, 14, 14, 14)
+        layout.setSpacing(10)
 
-        self.append_log("<b style='color:#89dceb;'>[SYSTEM] Готово. Нажми 'Запустить мониторинг'.</b>")
+        title = QLabel("📁 PCAP Analysis")
+        layout.addWidget(title)
 
-        # применяем профиль ПОСЛЕ UI
-        self.apply_profile_on_startup()
+        desc = QLabel("Отдельный экран для offline-анализа PCAP. Выберите файл и запустите обработку.")
+        desc.setWordWrap(True)
+        layout.addWidget(desc)
 
-        if export_reports is None:
-            self.export_btn.setEnabled(False)
-            self.export_btn.setToolTip("Модуль NetworkMonitor.reports.export не найден")
+        pcap_actions = QHBoxLayout()
+        self.pcap_btn = QPushButton("ВЫБРАТЬ PCAP ФАЙЛ")
+        self.pcap_btn.clicked.connect(self.open_pcap)
+        pcap_actions.addWidget(self.pcap_btn)
 
-        # Таймер: раз в 1 сек обновляем графики из текущих значений engine
-        self.timer = QTimer(self)
-        self.timer.setInterval(1000)
-        self.timer.timeout.connect(self.refresh_graphs)
-        self.timer.start()
+        self.open_main_btn = QPushButton("ПЕРЕЙТИ НА MAIN")
+        self.open_main_btn.clicked.connect(lambda: self.switch_page(0))
+        pcap_actions.addWidget(self.open_main_btn)
+        layout.addLayout(pcap_actions)
 
+        self.pcap_state_label = QLabel("Состояние: ожидание файла")
+        layout.addWidget(self.pcap_state_label)
+
+        self.pcap_stats_list = QListWidget()
+        layout.addWidget(self.pcap_stats_list)
+
+        self.pcap_log_area = QTextEdit()
+        self.pcap_log_area.setReadOnly(True)
+        layout.addWidget(self.pcap_log_area)
+        return page
+
+    def _build_settings_page(self) -> QWidget:
+        page = QWidget()
+        layout = QVBoxLayout(page)
+        layout.setContentsMargins(14, 14, 14, 14)
+        layout.setSpacing(10)
+
+        title = QLabel("⚙️ Settings / Profile")
+        layout.addWidget(title)
+
+        desc = QLabel(
+            "Экран управления профилями и параметрами детектора. "
+            "На этом этапе используется существующий диалог настроек."
+        )
+        desc.setWordWrap(True)
+        layout.addWidget(desc)
+
+        self.settings_page_btn = QPushButton("ОТКРЫТЬ ДИАЛОГ НАСТРОЕК")
+        self.settings_page_btn.clicked.connect(self.open_settings)
+        layout.addWidget(self.settings_page_btn)
+
+        layout.addStretch(1)
+        return page
+
+    def switch_page(self, index: int) -> None:
+        self.pages.setCurrentIndex(index)
+
+        nav_buttons = [self.main_nav_btn, self.pcap_nav_btn, self.settings_nav_btn]
+        for i, btn in enumerate(nav_buttons):
+            btn.setChecked(i == index)
+            btn.setObjectName("nav_btn_active" if i == index else "nav_btn")
+            btn.setStyle(btn.style())
 
     # -------- Profile apply --------
     def apply_profile_on_startup(self) -> None:
@@ -173,6 +288,9 @@ class MainWindow(QMainWindow):
         self.log_area.append(msg)
         self.log_area.verticalScrollBar().setValue(self.log_area.verticalScrollBar().maximum())
 
+        self.pcap_log_area.append(msg)
+        self.pcap_log_area.verticalScrollBar().setValue(self.pcap_log_area.verticalScrollBar().maximum())
+
     def update_assessment_panel(self) -> None:
         assessment = getattr(self.engine, "last_assessment", None)
         ready = bool(getattr(self.engine, "assessment_ready", False))
@@ -197,6 +315,7 @@ class MainWindow(QMainWindow):
 
     def set_status_text(self, text: str) -> None:
         self.status_label.setText(f"Статус: {text}")
+        self.pcap_state_label.setText(f"Состояние: {text}")
 
     def start_worker(self, mode: str, pcap_path: str | None = None) -> None:
         self.worker = CaptureWorker(self.engine, mode=mode, pcap_path=pcap_path)
@@ -213,11 +332,12 @@ class MainWindow(QMainWindow):
             self,
             "Выберите PCAP файл",
             "",
-            "PCAP Files (*.pcap *.pcapng);;All Files (*)"
+            "PCAP Files (*.pcap *.pcapng);;All Files (*)",
         )
         if not file_path:
             return
 
+        self.switch_page(1)
         self.last_pcap_path = file_path
         self.is_monitoring = True
         self.current_mode = "pcap"
@@ -225,15 +345,20 @@ class MainWindow(QMainWindow):
         self.action_btn.setEnabled(False)
         self.settings_btn.setEnabled(False)
         self.pcap_btn.setEnabled(False)
+        self.settings_page_btn.setEnabled(False)
 
         self.set_status_text("offline-анализ PCAP")
         self.append_log(f"<b style='color:#89dceb;'>[SYSTEM] Запуск PCAP анализа: {file_path}</b>")
 
         self.start_worker(mode="pcap", pcap_path=file_path)
+
     def update_stats_display(self) -> None:
         self.stats_list.clear()
+        self.pcap_stats_list.clear()
         for ip, count in self.engine.attacker_stats.most_common(10):
-            self.stats_list.addItem(f"{ip} → {count} событий")
+            line = f"{ip} → {count} событий"
+            self.stats_list.addItem(line)
+            self.pcap_stats_list.addItem(line)
 
     def update_ib_label(self) -> None:
         self.update_assessment_panel()
@@ -259,9 +384,10 @@ class MainWindow(QMainWindow):
         self.action_btn.setEnabled(True)
         self.pcap_btn.setEnabled(True)
         self.settings_btn.setEnabled(True)
+        self.settings_page_btn.setEnabled(True)
 
         self.action_btn.setText("ЗАПУСТИТЬ МОНИТОРИНГ")
-        self.action_btn.setObjectName("")
+        self.action_btn.setObjectName("primary_btn")
         self.action_btn.setStyle(self.action_btn.style())
 
         self.set_status_text("ожидание запуска")
@@ -271,6 +397,7 @@ class MainWindow(QMainWindow):
     # -------- Actions --------
     def toggle_monitoring(self) -> None:
         if not self.is_monitoring:
+            self.switch_page(0)
             self.is_monitoring = True
             self.current_mode = "live"
 
@@ -280,6 +407,7 @@ class MainWindow(QMainWindow):
 
             self.settings_btn.setEnabled(False)
             self.pcap_btn.setEnabled(False)
+            self.settings_page_btn.setEnabled(False)
 
             self.set_status_text("идёт live-мониторинг")
             self.update_assessment_panel()

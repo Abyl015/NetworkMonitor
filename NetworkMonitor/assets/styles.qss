@@ -158,3 +158,48 @@ QToolTip {
     border-radius: 6px;
     font-size: 12px;
 }
+/* ====== Navigation ====== */
+QWidget#sidebar {
+    background-color: #0b0d14;
+    border-right: 1px solid #1e2233;
+    min-width: 200px;
+    max-width: 240px;
+}
+
+QLabel#nav_title {
+    color: #22d3ee;
+    font-size: 18px;
+    font-weight: 800;
+    margin-bottom: 8px;
+}
+
+QPushButton#nav_btn {
+    text-align: left;
+    background-color: transparent;
+    border: 1px solid transparent;
+    border-radius: 6px;
+    color: #7f849c;
+    padding: 10px 12px;
+}
+
+QPushButton#nav_btn:hover {
+    background-color: #161925;
+    color: #cdd6f4;
+}
+
+QPushButton#nav_btn_active {
+    text-align: left;
+    background-color: #161925;
+    border: 1px solid #2b3352;
+    border-left: 3px solid #22d3ee;
+    border-radius: 6px;
+    color: #cdd6f4;
+    padding: 10px 12px;
+}
+
+QFrame#assessment_box {
+    background-color: #161925;
+    border: 1px solid #1e2233;
+    border-radius: 10px;
+    padding: 8px;
+}
