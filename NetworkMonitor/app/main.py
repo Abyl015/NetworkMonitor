@@ -45,7 +45,7 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("AI Network Guardian v2.0")
-        self.resize(1320, 780)
+
 
         self.engine = NetworkEngine(callback=None)
         self.worker: CaptureWorker | None = None
@@ -53,10 +53,6 @@ class MainWindow(QMainWindow):
         self.current_mode = "idle"
         self.last_pcap_path: str | None = None
 
-        # GUI-level counters for screen summaries
-        self.verdict_counts = {"anomaly": 0, "suspicious": 0, "malicious": 0}
-
-        self._build_ui()
 
         self.append_log("<b style='color:#89dceb;'>[SYSTEM] Готово. Нажми 'Запустить мониторинг'.</b>")
 
@@ -180,9 +176,6 @@ class MainWindow(QMainWindow):
         self.action_btn.clicked.connect(self.toggle_monitoring)
         btn_row.addWidget(self.action_btn)
 
-        self.open_pcap_from_main_btn = QPushButton("ОТКРЫТЬ PCAP")
-        self.open_pcap_from_main_btn.clicked.connect(self.open_pcap)
-        btn_row.addWidget(self.open_pcap_from_main_btn)
 
         self.settings_btn = QPushButton("ПРОФИЛИ / НАСТРОЙКИ")
         self.settings_btn.clicked.connect(self.open_settings)
@@ -209,9 +202,7 @@ class MainWindow(QMainWindow):
         self.plot = PlotWidget("📈 Метрики в реальном времени (1 точка/сек)")
         right_layout.addWidget(self.plot)
 
-        center.addLayout(left_layout, stretch=3)
-        center.addLayout(right_layout, stretch=2)
-        layout.addLayout(center)
+
         return page
 
     def _build_pcap_page(self) -> QWidget:
@@ -220,102 +211,12 @@ class MainWindow(QMainWindow):
         layout.setContentsMargins(14, 14, 14, 14)
         layout.setSpacing(10)
 
-        title = QLabel("📁 PCAP Screen")
-        layout.addWidget(title)
 
-        self.pcap_selected_file_label = QLabel("Файл: не выбран")
-        self.pcap_state_label = QLabel("Состояние анализа: ожидание файла")
-        layout.addWidget(self.pcap_selected_file_label)
-        layout.addWidget(self.pcap_state_label)
 
         pcap_actions = QHBoxLayout()
         self.pcap_btn = QPushButton("ВЫБРАТЬ PCAP ФАЙЛ")
         self.pcap_btn.clicked.connect(self.open_pcap)
         pcap_actions.addWidget(self.pcap_btn)
-
-        self.stop_pcap_btn = QPushButton("ОСТАНОВИТЬ АНАЛИЗ")
-        self.stop_pcap_btn.clicked.connect(self.stop_current_run)
-        pcap_actions.addWidget(self.stop_pcap_btn)
-
-        self.open_main_btn = QPushButton("ПЕРЕЙТИ НА MAIN")
-        self.open_main_btn.clicked.connect(lambda: self.switch_page(0))
-        pcap_actions.addWidget(self.open_main_btn)
-        layout.addLayout(pcap_actions)
-
-        summary_box = QFrame()
-        summary_box.setObjectName("assessment_box")
-        summary_layout = QGridLayout(summary_box)
-
-        self.pcap_ioc_label = QLabel("IOC matches: 0")
-        self.pcap_incidents_label = QLabel("Incidents: 0")
-        self.pcap_infected_label = QLabel("Infected hosts: 0")
-        self.pcap_malicious_label = QLabel("Malicious events: 0")
-        self.pcap_suspicious_label = QLabel("Suspicious events: 0")
-        self.pcap_anomaly_label = QLabel("Anomaly events: 0")
-        self.pcap_summary_label = QLabel("Summary: результат анализа ещё не сформирован")
-        self.pcap_summary_label.setWordWrap(True)
-
-        summary_layout.addWidget(self.pcap_ioc_label, 0, 0)
-        summary_layout.addWidget(self.pcap_incidents_label, 0, 1)
-        summary_layout.addWidget(self.pcap_infected_label, 1, 0)
-        summary_layout.addWidget(self.pcap_malicious_label, 1, 1)
-        summary_layout.addWidget(self.pcap_suspicious_label, 2, 0)
-        summary_layout.addWidget(self.pcap_anomaly_label, 2, 1)
-        summary_layout.addWidget(self.pcap_summary_label, 3, 0, 1, 2)
-        layout.addWidget(summary_box)
-
-        bottom = QHBoxLayout()
-        self.pcap_stats_list = QListWidget()
-        bottom.addWidget(self.pcap_stats_list, stretch=2)
-
-        self.pcap_log_area = QTextEdit()
-        self.pcap_log_area.setReadOnly(True)
-        bottom.addWidget(self.pcap_log_area, stretch=3)
-
-        layout.addLayout(bottom)
-        return page
-
-    def _build_settings_page(self) -> QWidget:
-        page = QWidget()
-        layout = QVBoxLayout(page)
-        layout.setContentsMargins(14, 14, 14, 14)
-        layout.setSpacing(10)
-
-        title = QLabel("⚙️ Settings / Profile")
-        layout.addWidget(title)
-
-        self.settings_profile_label = QLabel("Активный профиль: —")
-        layout.addWidget(self.settings_profile_label)
-
-        desc = QLabel(
-            "Управление профилями, порогами detection, sampling и ML-параметрами выполняется "
-            "через существующий диалог, чтобы сохранить совместимость с backend."
-        )
-        desc.setWordWrap(True)
-        layout.addWidget(desc)
-
-        row = QHBoxLayout()
-        self.settings_page_btn = QPushButton("ОТКРЫТЬ ПРОФИЛИ / НАСТРОЙКИ")
-        self.settings_page_btn.clicked.connect(self.open_settings)
-        row.addWidget(self.settings_page_btn)
-
-        self.refresh_profile_btn = QPushButton("ОБНОВИТЬ АКТИВНЫЙ ПРОФИЛЬ")
-        self.refresh_profile_btn.clicked.connect(self.refresh_profile_labels)
-        row.addWidget(self.refresh_profile_btn)
-
-        layout.addLayout(row)
-
-        self.settings_hint = QLabel(
-            "Доступные действия в диалоге: выбор профиля, изменение порогов, sampling, ML settings, "
-            "копирование/удаление профилей, reset ML model."
-        )
-        self.settings_hint.setWordWrap(True)
-        layout.addWidget(self.settings_hint)
-        layout.addStretch(1)
-        return page
-
-    def switch_page(self, index: int) -> None:
-        self.pages.setCurrentIndex(index)
 
         nav_buttons = [self.main_nav_btn, self.pcap_nav_btn, self.settings_nav_btn]
         for i, btn in enumerate(nav_buttons):
@@ -431,23 +332,7 @@ class MainWindow(QMainWindow):
 
     def set_status_text(self, text: str) -> None:
         self.status_label.setText(f"Статус: {text}")
-        self.pcap_state_label.setText(f"Состояние анализа: {text}")
 
-    def _update_verdict_counters(self, msg: str) -> None:
-        plain = self._strip_html(msg).lower()
-        if "[verdict]" not in plain:
-            return
-
-        if "malicious" in plain:
-            self.verdict_counts["malicious"] += 1
-        elif "suspicious" in plain:
-            self.verdict_counts["suspicious"] += 1
-        elif "anomaly" in plain:
-            self.verdict_counts["anomaly"] += 1
-
-        self.pcap_malicious_label.setText(f"Malicious events: {self.verdict_counts['malicious']}")
-        self.pcap_suspicious_label.setText(f"Suspicious events: {self.verdict_counts['suspicious']}")
-        self.pcap_anomaly_label.setText(f"Anomaly events: {self.verdict_counts['anomaly']}")
 
     def start_worker(self, mode: str, pcap_path: str | None = None) -> None:
         self.worker = CaptureWorker(self.engine, mode=mode, pcap_path=pcap_path)
@@ -481,60 +366,14 @@ class MainWindow(QMainWindow):
         self.last_pcap_path = file_path
         self.pcap_selected_file_label.setText(f"Файл: {file_path}")
         self.is_monitoring = True
-        self._set_mode("pcap")
-        self._clear_runtime_view_state()
-        self._set_controls_during_run(running=True)
+
 
         self.set_status_text("offline-анализ PCAP")
         self.append_log(f"<b style='color:#89dceb;'>[SYSTEM] Запуск PCAP анализа: {file_path}</b>")
 
         self.start_worker(mode="pcap", pcap_path=file_path)
 
-    def stop_current_run(self) -> None:
-        if not self.is_monitoring:
-            return
-        self.append_log("<b style='color:#f38ba8;'>[SYSTEM] Остановка текущего анализа...</b>")
-        self.engine.stop_capture()
 
-    def toggle_monitoring(self) -> None:
-        if self.is_monitoring:
-            return
-
-        self.switch_page(0)
-        self._set_mode("live")
-        self._clear_runtime_view_state()
-        self.is_monitoring = True
-
-        self.action_btn.setText("ОСТАНОВИТЬ МОНИТОРИНГ")
-        self.action_btn.setObjectName("stop_mode")
-        self.action_btn.setStyle(self.action_btn.style())
-
-        self._set_controls_during_run(running=True)
-        # действие stop только на основной кнопке
-        self.action_btn.setEnabled(True)
-
-        self.set_status_text("идёт live-мониторинг")
-        self.update_assessment_panel()
-        self.append_log("<b style='color:#a6e3a1;'>[SYSTEM] Мониторинг запущен...</b>")
-
-        self.action_btn.clicked.disconnect()
-        self.action_btn.clicked.connect(self.stop_current_run)
-
-        self.start_worker(mode="live")
-
-    def export_report(self) -> None:
-        if export_reports is None:
-            self.append_log("<span style='color:#f38ba8;'>[REPORT ERROR] export_reports не найден.</span>")
-            return
-        try:
-            csv_path, summary_path = export_reports()
-            self.append_log(f"<b style='color:#a6e3a1;'>[REPORT] CSV: {csv_path}</b>")
-            self.append_log(f"<b style='color:#a6e3a1;'>[REPORT] Summary: {summary_path}</b>")
-        except Exception as e:
-            self.append_log(f"<span style='color:#f38ba8;'>[REPORT ERROR] {type(e).__name__}: {e}</span>")
-            QMessageBox.critical(self, "Экспорт", f"Ошибка экспорта: {e}")
-
-    # -------- periodic / callbacks --------
     def update_stats_display(self) -> None:
         self.stats_list.clear()
         self.pcap_stats_list.clear()
@@ -542,6 +381,7 @@ class MainWindow(QMainWindow):
             line = f"{ip} → {count} событий"
             self.stats_list.addItem(line)
             self.pcap_stats_list.addItem(line)
+
 
     def refresh_graphs(self):
         pps_eff = float(getattr(self.engine.rules, "last_pps_eff", 0.0))
@@ -561,7 +401,7 @@ class MainWindow(QMainWindow):
         self.is_monitoring = False
         self._set_mode("idle")
 
-        self._set_controls_during_run(running=False)
+
 
         # вернём стартовую семантику кнопки live monitoring
         try:
@@ -576,6 +416,8 @@ class MainWindow(QMainWindow):
         self.set_status_text("ожидание запуска")
         self.update_assessment_panel()
         self.append_log("<b style='color:#89dceb;'>[SYSTEM] Мониторинг / анализ остановлен.</b>")
+
+          
 
     def closeEvent(self, event):
         try:
