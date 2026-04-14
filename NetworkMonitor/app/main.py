@@ -1,21 +1,32 @@
-# NetworkMonitor/app/main.py
 from __future__ import annotations
 
+import re
 import sys
 from pathlib import Path
 
-from PyQt6.QtWidgets import (
-    QApplication, QMainWindow, QTextEdit, QVBoxLayout, QHBoxLayout,
-    QWidget, QPushButton, QLabel, QListWidget, QMessageBox,
-    QFileDialog, QFrame, QGridLayout
-)
 from PyQt6.QtCore import Qt, QTimer
+from PyQt6.QtWidgets import (
+    QApplication,
+    QFileDialog,
+    QFrame,
+    QGridLayout,
+    QHBoxLayout,
+    QLabel,
+    QListWidget,
+    QMainWindow,
+    QMessageBox,
+    QPushButton,
+    QStackedWidget,
+    QTextEdit,
+    QVBoxLayout,
+    QWidget,
+)
 
-from NetworkMonitor.core.engine import NetworkEngine
+from NetworkMonitor.app.plot_widget import PlotWidget
+from NetworkMonitor.app.settings_dialog import SettingsDialog
 from NetworkMonitor.app.worker import CaptureWorker
 from NetworkMonitor.config.profile_manager import ProfileManager
-from NetworkMonitor.app.settings_dialog import SettingsDialog
-from NetworkMonitor.app.plot_widget import PlotWidget
+from NetworkMonitor.core.engine import NetworkEngine
 
 try:
     from NetworkMonitor.reports.export import export_reports
@@ -34,7 +45,7 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("AI Network Guardian v2.0")
-        self.resize(1200, 720)
+        self.resize(1320, 780)
 
         self.engine = NetworkEngine(callback=None)
         self.worker: CaptureWorker | None = None
@@ -42,90 +53,10 @@ class MainWindow(QMainWindow):
         self.current_mode = "idle"
         self.last_pcap_path: str | None = None
 
+        # GUI-level counters for screen summaries
+        self.verdict_counts = {"anomaly": 0, "suspicious": 0, "malicious": 0}
 
-        # -------- UI --------
-        main_layout = QHBoxLayout()
-
-        # Left
-        left_layout = QVBoxLayout()
-        left_layout.setSpacing(10)
-
-        title_left = QLabel("🛡️ Живой лог трафика")
-        title_left.setAlignment(Qt.AlignmentFlag.AlignLeft)
-        left_layout.addWidget(title_left)
-
-        # --- assessment panel ---
-        assessment_box = QFrame()
-        assessment_box.setObjectName("assessment_box")
-        assessment_layout = QGridLayout(assessment_box)
-
-        self.status_label = QLabel("Статус: ожидание запуска")
-        self.ib_label = QLabel("Индекс состояния ИБ: —")
-        self.threat_label = QLabel("Уровень угрозы: —")
-        self.incident_label = QLabel("Вероятность инцидента: —")
-        self.confidence_label = QLabel("Достоверность: —")
-        self.ioc_label = QLabel("IOC совпадения: 0")
-        self.infected_label = QLabel("Подозрительные хосты: 0")
-        self.summary_label = QLabel("Вывод: оценка ещё не сформирована")
-        self.summary_label.setWordWrap(True)
-
-        assessment_layout.addWidget(self.status_label, 0, 0, 1, 2)
-        assessment_layout.addWidget(self.ib_label, 1, 0)
-        assessment_layout.addWidget(self.threat_label, 1, 1)
-        assessment_layout.addWidget(self.incident_label, 2, 0)
-        assessment_layout.addWidget(self.confidence_label, 2, 1)
-        assessment_layout.addWidget(self.ioc_label, 3, 0)
-        assessment_layout.addWidget(self.infected_label, 3, 1)
-        assessment_layout.addWidget(self.summary_label, 4, 0, 1, 2)
-
-        left_layout.addWidget(assessment_box)
-
-        self.log_area = QTextEdit()
-        self.log_area.setReadOnly(True)
-        left_layout.addWidget(self.log_area)
-
-        # Buttons row
-        btn_row = QHBoxLayout()
-
-        self.action_btn = QPushButton("ЗАПУСТИТЬ МОНИТОРИНГ")
-        self.action_btn.clicked.connect(self.toggle_monitoring)
-        btn_row.addWidget(self.action_btn)
-
-        self.pcap_btn = QPushButton("ОТКРЫТЬ PCAP")
-        self.pcap_btn.clicked.connect(self.open_pcap)
-        btn_row.addWidget(self.pcap_btn)
-
-        self.settings_btn = QPushButton("ПРОФИЛИ / НАСТРОЙКИ")
-        self.settings_btn.clicked.connect(self.open_settings)
-        btn_row.addWidget(self.settings_btn)
-
-        self.export_btn = QPushButton("ЭКСПОРТ ОТЧЁТА (CSV)")
-        self.export_btn.clicked.connect(self.export_report)
-        btn_row.addWidget(self.export_btn)
-
-        left_layout.addLayout(btn_row)
-
-        # Right
-        right_layout = QVBoxLayout()
-        right_layout.setSpacing(10)
-        right_layout.setContentsMargins(10, 0, 10, 0)
-
-        title_right = QLabel("⚠️ Топ угроз по IP")
-        right_layout.addWidget(title_right)
-
-        self.stats_list = QListWidget()
-        right_layout.addWidget(self.stats_list)
-
-        # Graphs
-        self.plot = PlotWidget("📈 Метрики в реальном времени (1 точка/сек)")
-        right_layout.addWidget(self.plot)
-
-        main_layout.addLayout(left_layout, stretch=3)
-        main_layout.addLayout(right_layout, stretch=2)
-
-        container = QWidget()
-        container.setLayout(main_layout)
-        self.setCentralWidget(container)
+        self._build_ui()
 
         self.append_log("<b style='color:#89dceb;'>[SYSTEM] Готово. Нажми 'Запустить мониторинг'.</b>")
 
@@ -142,36 +73,315 @@ class MainWindow(QMainWindow):
         self.timer.timeout.connect(self.refresh_graphs)
         self.timer.start()
 
+    # -------- UI build --------
+    def _build_ui(self) -> None:
+        root = QWidget()
+        root_layout = QHBoxLayout(root)
+        root_layout.setContentsMargins(0, 0, 0, 0)
+        root_layout.setSpacing(0)
+
+        sidebar = QWidget()
+        sidebar.setObjectName("sidebar")
+        nav_layout = QVBoxLayout(sidebar)
+        nav_layout.setContentsMargins(14, 16, 14, 16)
+        nav_layout.setSpacing(8)
+
+        nav_title = QLabel("SENTINEL")
+        nav_title.setObjectName("nav_title")
+        nav_layout.addWidget(nav_title)
+
+        self.main_nav_btn = QPushButton("Main")
+        self.main_nav_btn.setCheckable(True)
+        self.main_nav_btn.clicked.connect(lambda: self.switch_page(0))
+        nav_layout.addWidget(self.main_nav_btn)
+
+        self.pcap_nav_btn = QPushButton("PCAP")
+        self.pcap_nav_btn.setCheckable(True)
+        self.pcap_nav_btn.clicked.connect(lambda: self.switch_page(1))
+        nav_layout.addWidget(self.pcap_nav_btn)
+
+        self.settings_nav_btn = QPushButton("Settings/Profile")
+        self.settings_nav_btn.setCheckable(True)
+        self.settings_nav_btn.clicked.connect(lambda: self.switch_page(2))
+        nav_layout.addWidget(self.settings_nav_btn)
+        nav_layout.addStretch(1)
+
+        self.pages = QStackedWidget()
+        self.pages.addWidget(self._build_main_page())
+        self.pages.addWidget(self._build_pcap_page())
+        self.pages.addWidget(self._build_settings_page())
+
+        root_layout.addWidget(sidebar, stretch=0)
+        root_layout.addWidget(self.pages, stretch=1)
+
+        self.setCentralWidget(root)
+        self.switch_page(0)
+
+    def _build_main_page(self) -> QWidget:
+        page = QWidget()
+        layout = QVBoxLayout(page)
+        layout.setContentsMargins(14, 14, 14, 14)
+        layout.setSpacing(10)
+
+        title = QLabel("🛡️ Main Dashboard")
+        layout.addWidget(title)
+
+        head_row = QHBoxLayout()
+        self.mode_label = QLabel("Режим: idle")
+        self.profile_label = QLabel("Профиль: —")
+        self.incidents_count_label = QLabel("Инциденты: 0")
+        self.ioc_total_label = QLabel("IOC hits: 0")
+        self.infected_hosts_count_label = QLabel("Infected hosts: 0")
+        head_row.addWidget(self.mode_label)
+        head_row.addWidget(self.profile_label)
+        head_row.addWidget(self.incidents_count_label)
+        head_row.addWidget(self.ioc_total_label)
+        head_row.addWidget(self.infected_hosts_count_label)
+        head_row.addStretch(1)
+        layout.addLayout(head_row)
+
+        center = QHBoxLayout()
+
+        # LEFT BLOCK
+        left_layout = QVBoxLayout()
+        assessment_box = QFrame()
+        assessment_box.setObjectName("assessment_box")
+        assessment_layout = QGridLayout(assessment_box)
+
+        self.status_label = QLabel("Статус: ожидание запуска")
+        self.ib_label = QLabel("Индекс состояния ИБ: —")
+        self.threat_label = QLabel("Уровень угрозы: —")
+        self.incident_label = QLabel("Вероятность инцидента: —")
+        self.confidence_label = QLabel("Достоверность: —")
+        self.ioc_label = QLabel("IOC совпадения: 0")
+        self.domain_ioc_label = QLabel("IOC domain совпадения: 0")
+        self.infected_label = QLabel("Подозрительные хосты: 0")
+        self.summary_label = QLabel("Вывод: оценка ещё не сформирована")
+        self.summary_label.setWordWrap(True)
+
+        assessment_layout.addWidget(self.status_label, 0, 0, 1, 2)
+        assessment_layout.addWidget(self.ib_label, 1, 0)
+        assessment_layout.addWidget(self.threat_label, 1, 1)
+        assessment_layout.addWidget(self.incident_label, 2, 0)
+        assessment_layout.addWidget(self.confidence_label, 2, 1)
+        assessment_layout.addWidget(self.ioc_label, 3, 0)
+        assessment_layout.addWidget(self.domain_ioc_label, 3, 1)
+        assessment_layout.addWidget(self.infected_label, 4, 0)
+        assessment_layout.addWidget(self.summary_label, 5, 0, 1, 2)
+        left_layout.addWidget(assessment_box)
+
+        self.log_area = QTextEdit()
+        self.log_area.setReadOnly(True)
+        left_layout.addWidget(self.log_area)
+
+        btn_row = QHBoxLayout()
+        self.action_btn = QPushButton("ЗАПУСТИТЬ МОНИТОРИНГ")
+        self.action_btn.setObjectName("primary_btn")
+        self.action_btn.clicked.connect(self.toggle_monitoring)
+        btn_row.addWidget(self.action_btn)
+
+        self.open_pcap_from_main_btn = QPushButton("ОТКРЫТЬ PCAP")
+        self.open_pcap_from_main_btn.clicked.connect(self.open_pcap)
+        btn_row.addWidget(self.open_pcap_from_main_btn)
+
+        self.settings_btn = QPushButton("ПРОФИЛИ / НАСТРОЙКИ")
+        self.settings_btn.clicked.connect(self.open_settings)
+        btn_row.addWidget(self.settings_btn)
+
+        self.export_btn = QPushButton("ЭКСПОРТ ОТЧЁТА (CSV)")
+        self.export_btn.clicked.connect(self.export_report)
+        btn_row.addWidget(self.export_btn)
+
+        left_layout.addLayout(btn_row)
+
+        # RIGHT BLOCK
+        right_layout = QVBoxLayout()
+        right_layout.setSpacing(10)
+
+        right_layout.addWidget(QLabel("⚠️ Топ угроз по IP"))
+        self.stats_list = QListWidget()
+        right_layout.addWidget(self.stats_list)
+
+        right_layout.addWidget(QLabel("🚨 Активные инциденты по хостам"))
+        self.incidents_list = QListWidget()
+        right_layout.addWidget(self.incidents_list)
+
+        self.plot = PlotWidget("📈 Метрики в реальном времени (1 точка/сек)")
+        right_layout.addWidget(self.plot)
+
+        center.addLayout(left_layout, stretch=3)
+        center.addLayout(right_layout, stretch=2)
+        layout.addLayout(center)
+        return page
+
+    def _build_pcap_page(self) -> QWidget:
+        page = QWidget()
+        layout = QVBoxLayout(page)
+        layout.setContentsMargins(14, 14, 14, 14)
+        layout.setSpacing(10)
+
+        title = QLabel("📁 PCAP Screen")
+        layout.addWidget(title)
+
+        self.pcap_selected_file_label = QLabel("Файл: не выбран")
+        self.pcap_state_label = QLabel("Состояние анализа: ожидание файла")
+        layout.addWidget(self.pcap_selected_file_label)
+        layout.addWidget(self.pcap_state_label)
+
+        pcap_actions = QHBoxLayout()
+        self.pcap_btn = QPushButton("ВЫБРАТЬ PCAP ФАЙЛ")
+        self.pcap_btn.clicked.connect(self.open_pcap)
+        pcap_actions.addWidget(self.pcap_btn)
+
+        self.stop_pcap_btn = QPushButton("ОСТАНОВИТЬ АНАЛИЗ")
+        self.stop_pcap_btn.clicked.connect(self.stop_current_run)
+        pcap_actions.addWidget(self.stop_pcap_btn)
+
+        self.open_main_btn = QPushButton("ПЕРЕЙТИ НА MAIN")
+        self.open_main_btn.clicked.connect(lambda: self.switch_page(0))
+        pcap_actions.addWidget(self.open_main_btn)
+        layout.addLayout(pcap_actions)
+
+        summary_box = QFrame()
+        summary_box.setObjectName("assessment_box")
+        summary_layout = QGridLayout(summary_box)
+
+        self.pcap_ioc_label = QLabel("IOC matches: 0")
+        self.pcap_incidents_label = QLabel("Incidents: 0")
+        self.pcap_infected_label = QLabel("Infected hosts: 0")
+        self.pcap_malicious_label = QLabel("Malicious events: 0")
+        self.pcap_suspicious_label = QLabel("Suspicious events: 0")
+        self.pcap_anomaly_label = QLabel("Anomaly events: 0")
+        self.pcap_summary_label = QLabel("Summary: результат анализа ещё не сформирован")
+        self.pcap_summary_label.setWordWrap(True)
+
+        summary_layout.addWidget(self.pcap_ioc_label, 0, 0)
+        summary_layout.addWidget(self.pcap_incidents_label, 0, 1)
+        summary_layout.addWidget(self.pcap_infected_label, 1, 0)
+        summary_layout.addWidget(self.pcap_malicious_label, 1, 1)
+        summary_layout.addWidget(self.pcap_suspicious_label, 2, 0)
+        summary_layout.addWidget(self.pcap_anomaly_label, 2, 1)
+        summary_layout.addWidget(self.pcap_summary_label, 3, 0, 1, 2)
+        layout.addWidget(summary_box)
+
+        bottom = QHBoxLayout()
+        self.pcap_stats_list = QListWidget()
+        bottom.addWidget(self.pcap_stats_list, stretch=2)
+
+        self.pcap_log_area = QTextEdit()
+        self.pcap_log_area.setReadOnly(True)
+        bottom.addWidget(self.pcap_log_area, stretch=3)
+
+        layout.addLayout(bottom)
+        return page
+
+    def _build_settings_page(self) -> QWidget:
+        page = QWidget()
+        layout = QVBoxLayout(page)
+        layout.setContentsMargins(14, 14, 14, 14)
+        layout.setSpacing(10)
+
+        title = QLabel("⚙️ Settings / Profile")
+        layout.addWidget(title)
+
+        self.settings_profile_label = QLabel("Активный профиль: —")
+        layout.addWidget(self.settings_profile_label)
+
+        desc = QLabel(
+            "Управление профилями, порогами detection, sampling и ML-параметрами выполняется "
+            "через существующий диалог, чтобы сохранить совместимость с backend."
+        )
+        desc.setWordWrap(True)
+        layout.addWidget(desc)
+
+        row = QHBoxLayout()
+        self.settings_page_btn = QPushButton("ОТКРЫТЬ ПРОФИЛИ / НАСТРОЙКИ")
+        self.settings_page_btn.clicked.connect(self.open_settings)
+        row.addWidget(self.settings_page_btn)
+
+        self.refresh_profile_btn = QPushButton("ОБНОВИТЬ АКТИВНЫЙ ПРОФИЛЬ")
+        self.refresh_profile_btn.clicked.connect(self.refresh_profile_labels)
+        row.addWidget(self.refresh_profile_btn)
+
+        layout.addLayout(row)
+
+        self.settings_hint = QLabel(
+            "Доступные действия в диалоге: выбор профиля, изменение порогов, sampling, ML settings, "
+            "копирование/удаление профилей, reset ML model."
+        )
+        self.settings_hint.setWordWrap(True)
+        layout.addWidget(self.settings_hint)
+        layout.addStretch(1)
+        return page
+
+    def switch_page(self, index: int) -> None:
+        self.pages.setCurrentIndex(index)
+
+        nav_buttons = [self.main_nav_btn, self.pcap_nav_btn, self.settings_nav_btn]
+        for i, btn in enumerate(nav_buttons):
+            btn.setChecked(i == index)
+            btn.setObjectName("nav_btn_active" if i == index else "nav_btn")
+            btn.setStyle(btn.style())
 
     # -------- Profile apply --------
     def apply_profile_on_startup(self) -> None:
         try:
             pm = ProfileManager()
             active_name = pm.get_active_filename() or "default.json"
-            prof = pm.load_profile(active_name)  # Profile(...)
-            # engine.apply_profile ожидает dict, поэтому prof.data
+            prof = pm.load_profile(active_name)
             self.engine.apply_profile(prof.data, profile_name=prof.filename.replace(".json", ""))
             self.append_log(f"<b style='color:#89dceb;'>[PROFILE] Применён: {prof.name} ({prof.filename})</b>")
+            self.refresh_profile_labels()
         except Exception as e:
             self.append_log(f"<span style='color:#f38ba8;'>[PROFILE] Ошибка: {type(e).__name__}: {e}</span>")
+
+    def refresh_profile_labels(self) -> None:
+        try:
+            pm = ProfileManager()
+            active = pm.get_active_filename() or "default.json"
+            prof = pm.load_profile(active)
+            self.profile_label.setText(f"Профиль: {prof.name}")
+            self.settings_profile_label.setText(f"Активный профиль: {prof.name} ({active})")
+        except Exception as e:
+            self.profile_label.setText("Профиль: ошибка")
+            self.settings_profile_label.setText(f"Активный профиль: ошибка ({type(e).__name__})")
 
     def open_settings(self):
         dlg = SettingsDialog(self, self.engine)
         dlg.exec()
-        # после закрытия — применим активный профиль на всякий случай
+        # после закрытия — применим активный профиль
         try:
             pm = ProfileManager()
             active = pm.get_active_filename() or "default.json"
             pr = pm.load_profile(active)
             self.engine.apply_profile(pr.data, profile_name=Path(active).stem)
             self.append_log(f"<b style='color:#89dceb;'>[PROFILE] Активный: {pr.name} ({active})</b>")
+            self.refresh_profile_labels()
         except Exception as e:
             self.append_log(f"<span style='color:#f38ba8;'>[PROFILE ERROR] {type(e).__name__}: {e}</span>")
 
-    # -------- UI helpers --------
+    # -------- helpers --------
+    def _set_mode(self, mode: str) -> None:
+        self.current_mode = mode
+        self.mode_label.setText(f"Режим: {mode}")
+
+    def _clear_runtime_view_state(self) -> None:
+        self.verdict_counts = {"anomaly": 0, "suspicious": 0, "malicious": 0}
+        self.pcap_malicious_label.setText("Malicious events: 0")
+        self.pcap_suspicious_label.setText("Suspicious events: 0")
+        self.pcap_anomaly_label.setText("Anomaly events: 0")
+        self.pcap_summary_label.setText("Summary: результат анализа ещё не сформирован")
+        self.incidents_list.clear()
+
+    def _strip_html(self, msg: str) -> str:
+        return re.sub(r"<[^>]+>", "", msg)
+
     def append_log(self, msg: str) -> None:
         self.log_area.append(msg)
         self.log_area.verticalScrollBar().setValue(self.log_area.verticalScrollBar().maximum())
+
+        self.pcap_log_area.append(msg)
+        self.pcap_log_area.verticalScrollBar().setValue(self.pcap_log_area.verticalScrollBar().maximum())
 
     def update_assessment_panel(self) -> None:
         assessment = getattr(self.engine, "last_assessment", None)
@@ -183,20 +393,61 @@ class MainWindow(QMainWindow):
             self.incident_label.setText("Вероятность инцидента: —")
             self.confidence_label.setText("Достоверность: —")
             self.summary_label.setText("Вывод: недостаточно данных для достоверной оценки")
+            self.pcap_summary_label.setText("Summary: ждём завершения анализа и расчёта assessment")
         else:
             self.ib_label.setText(f"Индекс состояния ИБ: {assessment['overall_score']}/100")
             self.threat_label.setText(f"Уровень угрозы: {assessment['threat_level']}")
             self.incident_label.setText(f"Вероятность инцидента: {assessment['incident_probability']}")
             self.confidence_label.setText(f"Достоверность: {assessment['confidence']}")
             self.summary_label.setText(f"Вывод: {assessment['summary']}")
+            self.pcap_summary_label.setText(f"Summary: {assessment['summary']}")
 
-        self.ioc_label.setText(f"IOC совпадения: {len(getattr(self.engine, 'ioc_seen', set()))}")
-        self.infected_label.setText(
-            f"Подозрительные хосты: {len(getattr(self.engine, 'reported_infected_hosts', set()))}"
-        )
+        ioc_hits = len(getattr(self.engine, "ioc_seen", set()))
+        domain_hits = len(getattr(self.engine, "domain_ioc_seen", set()))
+        incidents_count = len(getattr(self.engine, "incidents", {}))
+        infected_count = len(getattr(self.engine, "reported_infected_hosts", set()))
+
+        self.ioc_label.setText(f"IOC IP совпадения: {ioc_hits}")
+        self.domain_ioc_label.setText(f"IOC domain совпадения: {domain_hits}")
+        self.infected_label.setText(f"Подозрительные хосты: {infected_count}")
+
+        self.ioc_total_label.setText(f"IOC hits: {ioc_hits + domain_hits}")
+        self.incidents_count_label.setText(f"Инциденты: {incidents_count}")
+        self.infected_hosts_count_label.setText(f"Infected hosts: {infected_count}")
+
+        self.pcap_ioc_label.setText(f"IOC matches: {ioc_hits + domain_hits}")
+        self.pcap_incidents_label.setText(f"Incidents: {incidents_count}")
+        self.pcap_infected_label.setText(f"Infected hosts: {infected_count}")
+
+    def update_incidents_display(self) -> None:
+        self.incidents_list.clear()
+        incidents = getattr(self.engine, "incidents", {})
+        for host, inc in list(incidents.items())[:20]:
+            line = (
+                f"{host} | ioc_ip={inc.get('ioc_ip_hits', 0)} | ioc_domain={inc.get('ioc_domain_hits', 0)} "
+                f"| ml={inc.get('ml_hits', 0)} | scan={inc.get('scan_hits', 0)} | dos={inc.get('dos_hits', 0)}"
+            )
+            self.incidents_list.addItem(line)
 
     def set_status_text(self, text: str) -> None:
         self.status_label.setText(f"Статус: {text}")
+        self.pcap_state_label.setText(f"Состояние анализа: {text}")
+
+    def _update_verdict_counters(self, msg: str) -> None:
+        plain = self._strip_html(msg).lower()
+        if "[verdict]" not in plain:
+            return
+
+        if "malicious" in plain:
+            self.verdict_counts["malicious"] += 1
+        elif "suspicious" in plain:
+            self.verdict_counts["suspicious"] += 1
+        elif "anomaly" in plain:
+            self.verdict_counts["anomaly"] += 1
+
+        self.pcap_malicious_label.setText(f"Malicious events: {self.verdict_counts['malicious']}")
+        self.pcap_suspicious_label.setText(f"Suspicious events: {self.verdict_counts['suspicious']}")
+        self.pcap_anomaly_label.setText(f"Anomaly events: {self.verdict_counts['anomaly']}")
 
     def start_worker(self, mode: str, pcap_path: str | None = None) -> None:
         self.worker = CaptureWorker(self.engine, mode=mode, pcap_path=pcap_path)
@@ -204,92 +455,72 @@ class MainWindow(QMainWindow):
         self.worker.finished_signal.connect(self.on_worker_finished)
         self.worker.start()
 
+    def _set_controls_during_run(self, running: bool) -> None:
+        self.action_btn.setEnabled(not running)
+        self.open_pcap_from_main_btn.setEnabled(not running)
+        self.pcap_btn.setEnabled(not running)
+        self.settings_btn.setEnabled(not running)
+        self.settings_page_btn.setEnabled(not running)
+
+    # -------- actions --------
     def open_pcap(self) -> None:
         if self.is_monitoring:
-            QMessageBox.information(self, "PCAP", "Сначала остановите текущий мониторинг.")
+            QMessageBox.information(self, "PCAP", "Сначала остановите текущий мониторинг/анализ.")
             return
 
         file_path, _ = QFileDialog.getOpenFileName(
             self,
             "Выберите PCAP файл",
             "",
-            "PCAP Files (*.pcap *.pcapng);;All Files (*)"
+            "PCAP Files (*.pcap *.pcapng);;All Files (*)",
         )
         if not file_path:
             return
 
+        self.switch_page(1)
         self.last_pcap_path = file_path
+        self.pcap_selected_file_label.setText(f"Файл: {file_path}")
         self.is_monitoring = True
-        self.current_mode = "pcap"
-
-        self.action_btn.setEnabled(False)
-        self.settings_btn.setEnabled(False)
-        self.pcap_btn.setEnabled(False)
+        self._set_mode("pcap")
+        self._clear_runtime_view_state()
+        self._set_controls_during_run(running=True)
 
         self.set_status_text("offline-анализ PCAP")
         self.append_log(f"<b style='color:#89dceb;'>[SYSTEM] Запуск PCAP анализа: {file_path}</b>")
 
         self.start_worker(mode="pcap", pcap_path=file_path)
-    def update_stats_display(self) -> None:
-        self.stats_list.clear()
-        for ip, count in self.engine.attacker_stats.most_common(10):
-            self.stats_list.addItem(f"{ip} → {count} событий")
 
-    def update_ib_label(self) -> None:
-        self.update_assessment_panel()
+    def stop_current_run(self) -> None:
+        if not self.is_monitoring:
+            return
+        self.append_log("<b style='color:#f38ba8;'>[SYSTEM] Остановка текущего анализа...</b>")
+        self.engine.stop_capture()
 
-    def refresh_graphs(self):
-        # Берём “живые” метрики из RuleEngine + ML counters
-        pps_eff = float(getattr(self.engine.rules, "last_pps_eff", 0.0))
-        seen = max(1, int(getattr(self.engine, "total_seen", 0)))
-        anom = int(getattr(self.engine, "total_anom", 0))
-        anom_rate = anom / seen
-        self.plot.push(pps_eff=pps_eff, anom_rate=anom_rate)
+    def toggle_monitoring(self) -> None:
+        if self.is_monitoring:
+            return
 
-    # -------- Worker callbacks --------
-    def on_worker_message(self, msg: str) -> None:
-        self.append_log(msg)
-        self.update_assessment_panel()
-        self.update_stats_display()
+        self.switch_page(0)
+        self._set_mode("live")
+        self._clear_runtime_view_state()
+        self.is_monitoring = True
 
-    def on_worker_finished(self) -> None:
-        self.is_monitoring = False
-        self.current_mode = "idle"
-
-        self.action_btn.setEnabled(True)
-        self.pcap_btn.setEnabled(True)
-        self.settings_btn.setEnabled(True)
-
-        self.action_btn.setText("ЗАПУСТИТЬ МОНИТОРИНГ")
-        self.action_btn.setObjectName("")
+        self.action_btn.setText("ОСТАНОВИТЬ МОНИТОРИНГ")
+        self.action_btn.setObjectName("stop_mode")
         self.action_btn.setStyle(self.action_btn.style())
 
-        self.set_status_text("ожидание запуска")
+        self._set_controls_during_run(running=True)
+        # действие stop только на основной кнопке
+        self.action_btn.setEnabled(True)
+
+        self.set_status_text("идёт live-мониторинг")
         self.update_assessment_panel()
-        self.append_log("<b style='color:#89dceb;'>[SYSTEM] Мониторинг / анализ остановлен.</b>")
+        self.append_log("<b style='color:#a6e3a1;'>[SYSTEM] Мониторинг запущен...</b>")
 
-    # -------- Actions --------
-    def toggle_monitoring(self) -> None:
-        if not self.is_monitoring:
-            self.is_monitoring = True
-            self.current_mode = "live"
+        self.action_btn.clicked.disconnect()
+        self.action_btn.clicked.connect(self.stop_current_run)
 
-            self.action_btn.setText("ОСТАНОВИТЬ МОНИТОРИНГ")
-            self.action_btn.setObjectName("stop_mode")
-            self.action_btn.setStyle(self.action_btn.style())
-
-            self.settings_btn.setEnabled(False)
-            self.pcap_btn.setEnabled(False)
-
-            self.set_status_text("идёт live-мониторинг")
-            self.update_assessment_panel()
-            self.append_log("<b style='color:#a6e3a1;'>[SYSTEM] Мониторинг запущен...</b>")
-
-            self.start_worker(mode="live")
-        else:
-            self.append_log("<b style='color:#f38ba8;'>[SYSTEM] Остановка мониторинга...</b>")
-            self.action_btn.setEnabled(False)
-            self.engine.stop_capture()
+        self.start_worker(mode="live")
 
     def export_report(self) -> None:
         if export_reports is None:
@@ -302,6 +533,49 @@ class MainWindow(QMainWindow):
         except Exception as e:
             self.append_log(f"<span style='color:#f38ba8;'>[REPORT ERROR] {type(e).__name__}: {e}</span>")
             QMessageBox.critical(self, "Экспорт", f"Ошибка экспорта: {e}")
+
+    # -------- periodic / callbacks --------
+    def update_stats_display(self) -> None:
+        self.stats_list.clear()
+        self.pcap_stats_list.clear()
+        for ip, count in self.engine.attacker_stats.most_common(10):
+            line = f"{ip} → {count} событий"
+            self.stats_list.addItem(line)
+            self.pcap_stats_list.addItem(line)
+
+    def refresh_graphs(self):
+        pps_eff = float(getattr(self.engine.rules, "last_pps_eff", 0.0))
+        seen = max(1, int(getattr(self.engine, "total_seen", 0)))
+        anom = int(getattr(self.engine, "total_anom", 0))
+        anom_rate = anom / seen
+        self.plot.push(pps_eff=pps_eff, anom_rate=anom_rate)
+
+    def on_worker_message(self, msg: str) -> None:
+        self.append_log(msg)
+        self._update_verdict_counters(msg)
+        self.update_assessment_panel()
+        self.update_stats_display()
+        self.update_incidents_display()
+
+    def on_worker_finished(self) -> None:
+        self.is_monitoring = False
+        self._set_mode("idle")
+
+        self._set_controls_during_run(running=False)
+
+        # вернём стартовую семантику кнопки live monitoring
+        try:
+            self.action_btn.clicked.disconnect()
+        except Exception:
+            pass
+        self.action_btn.clicked.connect(self.toggle_monitoring)
+        self.action_btn.setText("ЗАПУСТИТЬ МОНИТОРИНГ")
+        self.action_btn.setObjectName("primary_btn")
+        self.action_btn.setStyle(self.action_btn.style())
+
+        self.set_status_text("ожидание запуска")
+        self.update_assessment_panel()
+        self.append_log("<b style='color:#89dceb;'>[SYSTEM] Мониторинг / анализ остановлен.</b>")
 
     def closeEvent(self, event):
         try:
