@@ -95,3 +95,4 @@ cd NetworkMonitor
 py -m venv .venv
 .\.venv\Scripts\activate
 pip install -U pip
+pip install -r requirements.txt
