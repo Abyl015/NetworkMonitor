@@ -1,6 +1,7 @@
 # NetworkMonitor/reports/export.py
 from __future__ import annotations
 
+import json
 import sqlite3
 from pathlib import Path
 from datetime import datetime
@@ -8,7 +9,11 @@ from datetime import datetime
 import pandas as pd
 
 
-def export_reports(db_path: Path | None = None, out_dir: Path | None = None):
+def export_reports(
+    db_path: Path | None = None,
+    out_dir: Path | None = None,
+    context: dict | None = None,
+):
     """
     Экспортирует alerts в CSV + summary.txt
     Возвращает (csv_path, summary_path)
@@ -53,6 +58,10 @@ def export_reports(db_path: Path | None = None, out_dir: Path | None = None):
         f"Total alerts: {total}\n\n"
         f"By type:\n{top_lines}\n"
     )
+    if context:
+        summary += "\nContext:\n"
+        summary += json.dumps(context, ensure_ascii=False, indent=2)
+        summary += "\n"
     summary_path.write_text(summary, encoding="utf-8")
 
     return str(csv_path), str(summary_path)
