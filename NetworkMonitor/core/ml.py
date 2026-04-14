@@ -34,6 +34,7 @@ class MLDetector:
         )
         self.is_trained: bool = False
         self.train_buffer: List[List[float]] = []
+        self.vector_size: Optional[int] = None
 
         # попытка загрузить модель при старте
         self.load()
@@ -47,8 +48,13 @@ class MLDetector:
         )
         self.is_trained = False
         self.train_buffer = []
+        self.vector_size = None
 
     def add_train_sample(self, x: List[float]) -> int:
+        if self.vector_size is None:
+            self.vector_size = len(x)
+        if len(x) != self.vector_size:
+            return len(self.train_buffer)
         self.train_buffer.append(x)
         return len(self.train_buffer)
 
@@ -62,6 +68,9 @@ class MLDetector:
 
     def predict_is_anomaly(self, x: List[float]) -> bool:
         if not self.is_trained:
+            return False
+        expected = getattr(self.model, "n_features_in_", None)
+        if expected is not None and len(x) != int(expected):
             return False
         pred = self.model.predict([x])[0]
         return pred == -1
@@ -83,6 +92,8 @@ class MLDetector:
             cfg = data.get("cfg")
             if cfg:
                 self.cfg = cfg
+            self.vector_size = getattr(self.model, "n_features_in_", None)
         except Exception:
             self.is_trained = False
             self.train_buffer = []
+            self.vector_size = None

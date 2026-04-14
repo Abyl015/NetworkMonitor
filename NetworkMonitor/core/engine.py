@@ -7,6 +7,7 @@ from collections import Counter
 from typing import Optional
 import scapy.all as scapy
 import ipaddress
+from scapy.layers.tls.handshake import TLSClientHello
 from NetworkMonitor.core.features import extract_features
 from NetworkMonitor.core.rules import RuleEngine
 from NetworkMonitor.core.scoring import calc_security_assessment, format_assessment_line
@@ -166,6 +167,104 @@ class NetworkEngine:
             return qname or None
         except Exception:
             return None
+
+    def _extract_http_host(self, pkt) -> str | None:
+        try:
+            if not pkt.haslayer(scapy.Raw):
+                return None
+
+            raw_payload = bytes(pkt[scapy.Raw].load)
+            if not raw_payload:
+                return None
+
+            # HTTP host читаем только из HTTP-запросов
+            header_blob = raw_payload[:8192]
+            if b"HTTP/" not in header_blob and not any(
+                header_blob.startswith(method)
+                for method in (b"GET ", b"POST ", b"HEAD ", b"PUT ", b"DELETE ", b"OPTIONS ", b"PATCH ")
+            ):
+                return None
+
+            text = header_blob.decode("utf-8", errors="ignore")
+
+            for line in text.splitlines():
+                if line.lower().startswith("host:"):
+                    host = line.split(":", 1)[1].strip()
+                    if host:
+                        return host
+            return None
+        except Exception:
+            return None
+
+    def _extract_tls_sni(self, pkt) -> str | None:
+        try:
+            if not pkt.haslayer(TLSClientHello):
+                return None
+
+            hello = pkt[TLSClientHello]
+            ext = getattr(hello, "ext", None) or []
+
+            for item in ext:
+                server_names = getattr(item, "servernames", None)
+                if not server_names:
+                    continue
+
+                for name_obj in server_names:
+                    if isinstance(name_obj, bytes):
+                        server_name = name_obj
+                    else:
+                        server_name = getattr(name_obj, "servername", None)
+                    if isinstance(server_name, bytes):
+                        server_name = server_name.decode("utf-8", errors="ignore")
+                    if server_name:
+                        return str(server_name).strip()
+            return None
+        except Exception:
+            return None
+
+    def _extract_ioc_domains_from_packet(self, pkt) -> list[tuple[str, str]]:
+        domains = []
+
+        dns_domain = self._extract_dns_query_name(pkt)
+        if dns_domain:
+            domains.append(("dns", dns_domain))
+
+        # HTTP/TLS распознаём только для потенциально релевантного TCP-трафика
+        sport = int(getattr(pkt, "sport", 0) or 0)
+        dport = int(getattr(pkt, "dport", 0) or 0)
+        tcp_ports = {80, 443, 8080, 8443}
+
+        if pkt.haslayer(scapy.TCP) and (sport in tcp_ports or dport in tcp_ports):
+            http_domain = self._extract_http_host(pkt)
+            if http_domain:
+                domains.append(("http", http_domain))
+
+            tls_domain = self._extract_tls_sni(pkt)
+            if tls_domain:
+                domains.append(("tls", tls_domain))
+
+        return domains
+
+    def _build_ml_vector(self, feat) -> list[float]:
+        return [
+            float(feat.length),
+            float(feat.proto),
+            float(feat.sport),
+            float(feat.dport),
+            float(feat.is_tcp),
+            float(feat.is_udp),
+            float(feat.is_icmp),
+            float(feat.is_multicast),
+            float(feat.ttl),
+            float(feat.tcp_syn),
+            float(feat.tcp_ack),
+        ]
+
+    def _is_service_discovery_noise(self, feat) -> bool:
+        service_ports = {5353, 1900, 137, 138}
+        if feat.is_multicast:
+            return True
+        return feat.sport in service_ports or feat.dport in service_ports
 
     def _check_ioc_domain(self, domain: str) -> str | None:
         if not domain:
@@ -417,52 +516,57 @@ class NetworkEngine:
                                 evidence="infected_host_candidate",
                             )
                 # DNS IOC проверяем тоже ВСЕГДА, без sampling
-            domain = self._extract_dns_query_name(pkt)
-            matched_domain = self._check_ioc_domain(domain) if domain else None
+            domain_ioc_hit = False
+            for domain_source, domain_value in self._extract_ioc_domains_from_packet(pkt):
+                matched_domain = self._check_ioc_domain(domain_value)
+                if not matched_domain:
+                    continue
+                domain_ioc_hit = True
 
-            if matched_domain and feat:
                 local_ip = self._get_possible_local_host(feat.src_ip, feat.dst_ip)
-                domain_event_key = (feat.src_ip, feat.dst_ip, matched_domain)
+                domain_event_key = (feat.src_ip, feat.dst_ip, domain_source, matched_domain)
 
-                if domain_event_key not in self.domain_ioc_seen:
-                    self.domain_ioc_seen.add(domain_event_key)
+                if domain_event_key in self.domain_ioc_seen:
+                    continue
 
-                    self._log(
-                        f"<span style='color:#f38ba8;'>[IOC DOMAIN MATCH] "
-                        f"{feat.src_ip} -> {feat.dst_ip} | domain: {domain} | matched: {matched_domain} | "
-                        f"possible host: {local_ip}</span>"
-                    )
+                self.domain_ioc_seen.add(domain_event_key)
 
-                    self._safe_db(
-                        "IOC_DOMAIN_MATCH",
-                        f"{feat.src_ip} -> {feat.dst_ip} | domain={domain} | matched_domain={matched_domain} | "
-                        f"possible_host={local_ip}"
-                    )
-                    self._touch_incident(
-                        local_ip,
-                        evidence="ioc_domain",
-                        remote_ip=feat.dst_ip,
-                        domain=matched_domain,
-                    )
+                self._log(
+                    f"<span style='color:#f38ba8;'>[IOC DOMAIN MATCH] "
+                    f"{feat.src_ip} -> {feat.dst_ip} | source: {domain_source.upper()} | "
+                    f"domain: {domain_value} | matched: {matched_domain} | possible host: {local_ip}</span>"
+                )
 
-                    if self._is_private_ip(local_ip):
-                        self.infected_host_scores[local_ip] += 1
+                self._safe_db(
+                    "IOC_DOMAIN_MATCH",
+                    f"{feat.src_ip} -> {feat.dst_ip} | source={domain_source} | "
+                    f"domain={domain_value} | matched_domain={matched_domain} | possible_host={local_ip}"
+                )
+                self._touch_incident(
+                    local_ip,
+                    evidence="ioc_domain",
+                    remote_ip=feat.dst_ip,
+                    domain=matched_domain,
+                )
 
-                        if (
-                                self.infected_host_scores[local_ip] >= 3
-                                and local_ip not in self.reported_infected_hosts
-                        ):
-                            self.reported_infected_hosts.add(local_ip)
+                if self._is_private_ip(local_ip):
+                    self.infected_host_scores[local_ip] += 1
 
-                            self._log(
-                                f"<b style='color:#f38ba8;'>[INFECTED HOST CANDIDATE] "
-                                f"{local_ip} repeatedly communicated with IOC infrastructure</b>"
-                            )
+                    if (
+                            self.infected_host_scores[local_ip] >= 3
+                            and local_ip not in self.reported_infected_hosts
+                    ):
+                        self.reported_infected_hosts.add(local_ip)
 
-                            self._safe_db(
-                                "INFECTED_HOST_CANDIDATE",
-                                f"host={local_ip} | ioc_hits={self.infected_host_scores[local_ip]}"
-                            )
+                        self._log(
+                            f"<b style='color:#f38ba8;'>[INFECTED HOST CANDIDATE] "
+                            f"{local_ip} repeatedly communicated with IOC infrastructure</b>"
+                        )
+
+                        self._safe_db(
+                            "INFECTED_HOST_CANDIDATE",
+                            f"host={local_ip} | ioc_hits={self.infected_host_scores[local_ip]}"
+                        )
             # sampling только для rules/ML/scoring
             if self.sample_factor > 1 and (self.packet_count % self.sample_factor != 0):
                 return
@@ -483,9 +587,9 @@ class NetworkEngine:
                     evidence="dos_rule",
                     remote_ip=feat.dst_ip,
                 )
-            x = [feat.length, feat.proto, feat.dport]
+            x = self._build_ml_vector(feat)
             ioc_ip_hit = ioc_ip is not None
-            ioc_domain_hit = matched_domain is not None
+            ioc_domain_hit = domain_ioc_hit
             event_local_ip = self._get_possible_local_host(feat.src_ip, feat.dst_ip)
             infected_flag = event_local_ip in self.reported_infected_hosts
             scan_rule_flag = bool(rule_metrics.get("scan_rule", False))
@@ -502,6 +606,9 @@ class NetworkEngine:
             self._emit_verdict(feat, verdict, reasons)
             # training
             if not self.ml.is_trained:
+                if self._is_service_discovery_noise(feat):
+                    return
+
                 n = self.ml.add_train_sample(x)
 
                 if n % 50 == 0:
