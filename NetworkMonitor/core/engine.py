@@ -229,15 +229,42 @@ class NetworkEngine:
         if dns_domain:
             domains.append(("dns", dns_domain))
 
-        http_domain = self._extract_http_host(pkt)
-        if http_domain:
-            domains.append(("http", http_domain))
+        # HTTP/TLS распознаём только для потенциально релевантного TCP-трафика
+        sport = int(getattr(pkt, "sport", 0) or 0)
+        dport = int(getattr(pkt, "dport", 0) or 0)
+        tcp_ports = {80, 443, 8080, 8443}
 
-        tls_domain = self._extract_tls_sni(pkt)
-        if tls_domain:
-            domains.append(("tls", tls_domain))
+        if pkt.haslayer(scapy.TCP) and (sport in tcp_ports or dport in tcp_ports):
+            http_domain = self._extract_http_host(pkt)
+            if http_domain:
+                domains.append(("http", http_domain))
+
+            tls_domain = self._extract_tls_sni(pkt)
+            if tls_domain:
+                domains.append(("tls", tls_domain))
 
         return domains
+
+    def _build_ml_vector(self, feat) -> list[float]:
+        return [
+            float(feat.length),
+            float(feat.proto),
+            float(feat.sport),
+            float(feat.dport),
+            float(feat.is_tcp),
+            float(feat.is_udp),
+            float(feat.is_icmp),
+            float(feat.is_multicast),
+            float(feat.ttl),
+            float(feat.tcp_syn),
+            float(feat.tcp_ack),
+        ]
+
+    def _is_service_discovery_noise(self, feat) -> bool:
+        service_ports = {5353, 1900, 137, 138}
+        if feat.is_multicast:
+            return True
+        return feat.sport in service_ports or feat.dport in service_ports
 
     def _check_ioc_domain(self, domain: str) -> str | None:
         if not domain:
@@ -489,11 +516,12 @@ class NetworkEngine:
                                 evidence="infected_host_candidate",
                             )
                 # DNS IOC проверяем тоже ВСЕГДА, без sampling
-            matched_domain = None
+            domain_ioc_hit = False
             for domain_source, domain_value in self._extract_ioc_domains_from_packet(pkt):
                 matched_domain = self._check_ioc_domain(domain_value)
                 if not matched_domain:
                     continue
+                domain_ioc_hit = True
 
                 local_ip = self._get_possible_local_host(feat.src_ip, feat.dst_ip)
                 domain_event_key = (feat.src_ip, feat.dst_ip, domain_source, matched_domain)
@@ -559,9 +587,9 @@ class NetworkEngine:
                     evidence="dos_rule",
                     remote_ip=feat.dst_ip,
                 )
-            x = [feat.length, feat.proto, feat.dport]
+            x = self._build_ml_vector(feat)
             ioc_ip_hit = ioc_ip is not None
-            ioc_domain_hit = matched_domain is not None
+            ioc_domain_hit = domain_ioc_hit
             event_local_ip = self._get_possible_local_host(feat.src_ip, feat.dst_ip)
             infected_flag = event_local_ip in self.reported_infected_hosts
             scan_rule_flag = bool(rule_metrics.get("scan_rule", False))
@@ -578,6 +606,9 @@ class NetworkEngine:
             self._emit_verdict(feat, verdict, reasons)
             # training
             if not self.ml.is_trained:
+                if self._is_service_discovery_noise(feat):
+                    return
+
                 n = self.ml.add_train_sample(x)
 
                 if n % 50 == 0:
