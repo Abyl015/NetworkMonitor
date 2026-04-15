@@ -8,11 +8,15 @@ DB_PATH = STORAGE_DIR / "traffic_data.db"
 
 
 def get_connection():
+    STORAGE_DIR.mkdir(parents=True, exist_ok=True)
     return sqlite3.connect(str(DB_PATH))
 
 
 def init_db():
     with get_connection() as conn:
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA synchronous=NORMAL")
+
         cursor = conn.cursor()
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS alerts (
@@ -22,6 +26,14 @@ def init_db():
                 description TEXT
             )
         """)
+
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_alerts_timestamp ON alerts(timestamp)"
+        )
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_alerts_type ON alerts(alert_type)"
+        )
+
         conn.commit()
 
 
