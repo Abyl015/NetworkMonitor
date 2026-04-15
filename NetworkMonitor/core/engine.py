@@ -7,6 +7,7 @@ from collections import Counter
 from typing import Optional
 import scapy.all as scapy
 import ipaddress
+from NetworkMonitor.core.dedup import AlertDedup
 from scapy.layers.tls.handshake import TLSClientHello
 from NetworkMonitor.core.features import extract_features
 from NetworkMonitor.core.rules import RuleEngine
@@ -45,8 +46,8 @@ class NetworkEngine:
         self.ioc_seen = set()
         self.infected_host_scores = Counter()
         self.reported_infected_hosts = set()
-        self.verdict_seen = set()
         self.incidents = {}
+        self.alert_dedup = AlertDedup(ttl_sec=300, max_size=10000)
         # RULES + ML
         self.rules = RuleEngine(sample_factor=self.sample_factor)
         self.ml = self._build_ml(profile_name=self.profile_name, ml_cfg=MLConfig())
@@ -301,6 +302,8 @@ class NetworkEngine:
             )
             return scapy.conf.iface
 
+        best_iface = None
+
         for iface in interfaces:
             desc = getattr(iface, "description", "") or ""
             iname = getattr(iface, "name", "") or ""
@@ -308,13 +311,29 @@ class NetworkEngine:
 
             name = f"{desc} {iname}".lower()
 
-            if ip and ip != "127.0.0.1":
-                if "bluetooth" not in name and "virtual" not in name:
-                    return iface
+            if not ip or ip == "127.0.0.1":
+                continue
 
-        return scapy.conf.iface
+            # пропускаем APIPA
+            if str(ip).startswith("169.254."):
+                continue
+
+            # пропускаем виртуальные / loopback / bluetooth
+            bad_words = ["bluetooth", "virtual", "loopback", "npcap", "vmware", "host-only"]
+            if any(word in name for word in bad_words):
+                continue
+
+            # предпочитаем приватный нормальный IP
+            if self._is_private_ip(str(ip)):
+                return iface
+
+            if best_iface is None:
+                best_iface = iface
+
+        return best_iface or scapy.conf.iface
 
     def start_capture(self):
+
         if self.running:
             self._log("<span style='color:#f9e2af;'>[SYSTEM] Захват уже запущен.</span>")
             return
@@ -330,7 +349,6 @@ class NetworkEngine:
             self.domain_ioc_seen.clear()
             self.infected_host_scores.clear()
             self.reported_infected_hosts.clear()
-            self.verdict_seen.clear()
 
             self._log(
                 f"<b style='color:#89dceb;'>[IOC] Загружено IOC IP: {len(self.malicious_ips)} | "
@@ -408,7 +426,7 @@ class NetworkEngine:
             self.domain_ioc_seen.clear()
             self.infected_host_scores.clear()
             self.reported_infected_hosts.clear()
-            self.verdict_seen.clear()
+
 
             self._log(
                 f"<b style='color:#89dceb;'>[IOC] Загружено IOC IP: {len(self.malicious_ips)} | "
@@ -615,8 +633,16 @@ class NetworkEngine:
             )
             self._emit_verdict(feat, verdict, reasons)
             # training
+            is_noise = self._is_service_discovery_noise(feat)
             if not self.ml.is_trained:
-                if self._is_service_discovery_noise(feat):
+                # Не учим модель на шумном и подозрительном трафике
+                if is_noise:
+                    return
+
+                if ioc_ip_hit or ioc_domain_hit:
+                    return
+
+                if scan_rule_flag or dos_rule_flag:
                     return
 
                 n = self.ml.add_train_sample(x)
@@ -763,12 +789,14 @@ class NetworkEngine:
             return
 
         reason_text = ", ".join(reasons) if reasons else "без уточнения"
-        event_key = (feat.src_ip, feat.dst_ip, feat.dport, verdict, reason_text)
 
-        if event_key in self.verdict_seen:
+        if not self.alert_dedup.should_emit(
+                feat.src_ip,
+                feat.dst_ip,
+                feat.dport,
+                verdict,
+        ):
             return
-
-        self.verdict_seen.add(event_key)
 
         self._log(
             f"<span style='color:#f9e2af;'>[VERDICT] {verdict.upper()} | "
@@ -960,6 +988,7 @@ class NetworkEngine:
     def _reset_runtime_state(self):
         if hasattr(self, "incidents"):
             self.incidents.clear()
+        self.alert_dedup.clear()
         self.attacker_stats.clear()
         self.packet_count = 0
         self.total_seen = 0
