@@ -1,4 +1,5 @@
 import sqlite3
+from contextlib import contextmanager
 from pathlib import Path
 
 STORAGE_DIR = Path(__file__).resolve().parent
@@ -7,9 +8,13 @@ STORAGE_DIR.mkdir(parents=True, exist_ok=True)
 DB_PATH = STORAGE_DIR / "traffic_data.db"
 
 
+@contextmanager
 def get_connection():
-    STORAGE_DIR.mkdir(parents=True, exist_ok=True)
-    return sqlite3.connect(str(DB_PATH))
+    conn = sqlite3.connect(str(DB_PATH))
+    try:
+        yield conn
+    finally:
+        conn.close()
 
 
 def init_db():
@@ -17,8 +22,7 @@ def init_db():
         conn.execute("PRAGMA journal_mode=WAL")
         conn.execute("PRAGMA synchronous=NORMAL")
 
-        cursor = conn.cursor()
-        cursor.execute("""
+        conn.execute("""
             CREATE TABLE IF NOT EXISTS alerts (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -27,10 +31,10 @@ def init_db():
             )
         """)
 
-        cursor.execute(
+        conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_alerts_timestamp ON alerts(timestamp)"
         )
-        cursor.execute(
+        conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_alerts_type ON alerts(alert_type)"
         )
 
@@ -39,8 +43,7 @@ def init_db():
 
 def add_alert(alert_type, description):
     with get_connection() as conn:
-        cursor = conn.cursor()
-        cursor.execute(
+        conn.execute(
             "INSERT INTO alerts (alert_type, description) VALUES (?, ?)",
             (alert_type, description)
         )
@@ -49,9 +52,9 @@ def add_alert(alert_type, description):
 
 def get_recent_alerts(limit=50):
     with get_connection() as conn:
-        cursor = conn.cursor()
-        cursor.execute(
-            "SELECT id, timestamp, alert_type, description FROM alerts ORDER BY id DESC LIMIT ?",
+        cursor = conn.execute(
+            "SELECT id, timestamp, alert_type, description "
+            "FROM alerts ORDER BY id DESC LIMIT ?",
             (limit,)
         )
         return cursor.fetchall()

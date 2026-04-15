@@ -14,7 +14,8 @@ from NetworkMonitor.core.rules import RuleEngine
 from NetworkMonitor.core.scoring import calc_security_assessment, format_assessment_line
 from NetworkMonitor.core.ml import MLDetector, MLConfig
 from NetworkMonitor.storage.database import init_db, add_alert
-
+from datetime import datetime
+from NetworkMonitor.core.session import MonitoringSession
 scapy.conf.noipaddrs = True
 
 
@@ -27,7 +28,7 @@ class NetworkEngine:
         self._sniffer: Optional[scapy.AsyncSniffer] = None
 
         # profile-related defaults
-        self.sample_factor = 20
+        self.sample_factor = 5
         self.profile_name = "default"
 
         # runtime stats
@@ -48,6 +49,12 @@ class NetworkEngine:
         self.reported_infected_hosts = set()
         self.incidents = {}
         self.alert_dedup = AlertDedup(ttl_sec=300, max_size=10000)
+        self.current_session = MonitoringSession()
+        self.debug_raw_packets = 0
+        self.debug_feat_packets = 0
+        self.debug_train_skip_noise = 0
+        self.debug_train_skip_ioc = 0
+        self.debug_train_added = 0
         # RULES + ML
         self.rules = RuleEngine(sample_factor=self.sample_factor)
         self.ml = self._build_ml(profile_name=self.profile_name, ml_cfg=MLConfig())
@@ -250,7 +257,6 @@ class NetworkEngine:
         return [
             float(feat.length),
             float(feat.proto),
-            float(feat.sport),
             float(feat.dport),
             float(feat.is_tcp),
             float(feat.is_udp),
@@ -357,11 +363,18 @@ class NetworkEngine:
             scapy.conf.sniff_promisc = True
             scapy.conf.verbose = False
 
+
             active_iface = self.get_working_iface()
             iface_desc = (
                 getattr(active_iface, "description", None)
                 or getattr(active_iface, "name", None)
                 or str(active_iface)
+            )
+            self.current_session = MonitoringSession(
+                mode="live",
+                profile_name=self.profile_name,
+                interface_name=str(iface_desc),
+                started_at=datetime.now(),
             )
 
             self._log(f"<b style='color:#89b4fa;'>[DEBUG] Активен: {iface_desc}</b>")
@@ -387,9 +400,9 @@ class NetworkEngine:
                 iface=active_iface,
                 prn=self.process_packet,
                 store=False,
-                filter="ip",
             )
             self._sniffer.start()
+            self._log("<span style='color:#89b4fa;'>[DEBUG] AsyncSniffer started</span>")
 
             while self.running:
                 time.sleep(0.2)
@@ -407,10 +420,23 @@ class NetworkEngine:
                 f"<span style='color:#f38ba8;'>Ошибка захвата: {type(e).__name__}: {e}</span>"
             )
         finally:
+            self.current_session.stopped_at = datetime.now()
+            self.current_session.total_packets = self.packet_count
+            self.current_session.total_anomalies = self.total_anom
+            self.current_session.total_ioc_matches = len(self.ioc_seen) + len(self.domain_ioc_seen)
+            self.current_session.total_incidents = len(self.incidents)
+            self.current_session.final_ib_score = self.last_ib_score
+            self.current_session.final_ib_level = self.last_ib_level
             self.stop_capture()
             self._log("<b style='color:#f38ba8;'>[SYSTEM] Захват остановлен.</b>")
 
     def analyze_pcap(self, pcap_path: str):
+        self.current_session = MonitoringSession(
+            mode="pcap",
+            profile_name=self.profile_name,
+            pcap_path=pcap_path,
+            started_at=datetime.now(),
+        )
         if self.running:
             self._log("<span style='color:#f9e2af;'>[SYSTEM] Сначала остановите текущий захват.</span>")
             return
@@ -469,6 +495,13 @@ class NetworkEngine:
                 f"<span style='color:#f38ba8;'>[PCAP ERROR] {type(e).__name__}: {e}</span>"
             )
         finally:
+            self.current_session.stopped_at = datetime.now()
+            self.current_session.total_packets = self.packet_count
+            self.current_session.total_anomalies = self.total_anom
+            self.current_session.total_ioc_matches = len(self.ioc_seen) + len(self.domain_ioc_seen)
+            self.current_session.total_incidents = len(self.incidents)
+            self.current_session.final_ib_score = self.last_ib_score
+            self.current_session.final_ib_level = self.last_ib_level
             self.running = False
             self._log("<b style='color:#f38ba8;'>[PCAP] Offline-анализ остановлен.</b>")
     # -------------------------
@@ -477,6 +510,9 @@ class NetworkEngine:
     def process_packet(self, pkt):
         try:
             self.packet_count += 1
+            self.debug_raw_packets += 1
+            if self.debug_raw_packets % 100 == 0:
+                self._log(f"<span style='color:#89b4fa;'>[DEBUG] raw packets: {self.debug_raw_packets}</span>")
 
             if pkt is None:
                 return
@@ -486,6 +522,9 @@ class NetworkEngine:
             if feat is None:
                 return
 
+            self.debug_feat_packets += 1
+            if self.debug_feat_packets % 100 == 0:
+                self._log(f"<span style='color:#89b4fa;'>[DEBUG] feature packets: {self.debug_feat_packets}</span>")
             # IOC проверяем ВСЕГДА, без sampling
             ioc_ip = self._check_ioc_ip(feat.src_ip, feat.dst_ip)
             if ioc_ip:
@@ -634,21 +673,34 @@ class NetworkEngine:
             self._emit_verdict(feat, verdict, reasons)
             # training
             is_noise = self._is_service_discovery_noise(feat)
+
             if not self.ml.is_trained:
-                # Не учим модель на шумном и подозрительном трафике
                 if is_noise:
+                    self.debug_train_skip_noise += 1
+                    if self.debug_train_skip_noise % 100 == 0:
+                        self._log(
+                            f"<span style='color:#f9e2af;'>[TRAIN DEBUG] skipped noise: {self.debug_train_skip_noise}</span>"
+                        )
                     return
 
                 if ioc_ip_hit or ioc_domain_hit:
-                    return
-
-                if scan_rule_flag or dos_rule_flag:
+                    self.debug_train_skip_ioc += 1
+                    if self.debug_train_skip_ioc % 20 == 0:
+                        self._log(
+                            f"<span style='color:#f9e2af;'>[TRAIN DEBUG] skipped IOC: {self.debug_train_skip_ioc}</span>"
+                        )
                     return
 
                 n = self.ml.add_train_sample(x)
+                self.debug_train_added += 1
 
                 if n % 50 == 0:
                     self._log(f"<i>Обучение: {n}/{self.ml.cfg.train_size}.</i>")
+
+                if self.debug_train_added % 50 == 0:
+                    self._log(
+                        f"<span style='color:#a6e3a1;'>[TRAIN DEBUG] added samples: {self.debug_train_added}</span>"
+                    )
 
                 if self.ml.can_train():
                     self.ml.train()
@@ -659,7 +711,11 @@ class NetworkEngine:
                     )
                 return
 
+
+
             # inference
+            if self._is_benign_local_noise(feat) and not ioc_ip_hit and not ioc_domain_hit:
+                return
             self.total_seen += 1
             is_anom = self.ml.predict_is_anomaly(x)
             verdict, reasons = self._classify_event(
@@ -673,21 +729,23 @@ class NetworkEngine:
             self._emit_verdict(feat, verdict, reasons)
             if is_anom:
                 self.total_anom += 1
-                self.attacker_stats[feat.src_ip] += 1
+
+                local_ip = self._get_possible_local_host(feat.src_ip, feat.dst_ip)
+                self.attacker_stats[local_ip] += 1
+
                 self._safe_db(
                     "ML_ANOMALY",
                     f"{feat.src_ip} -> {feat.dst_ip} dport={feat.dport}",
                 )
-                local_ip = self._get_possible_local_host(feat.src_ip, feat.dst_ip)
+
                 self._touch_incident(
                     local_ip,
                     evidence="ml_anomaly",
                     remote_ip=feat.dst_ip,
                 )
 
-                if self.attacker_stats[feat.src_ip] % 5 == 0:
+                if self.attacker_stats[local_ip] % 10 == 0:
                     self._log(f"⚠ АНОМАЛИЯ: {feat.src_ip} -> {feat.dst_ip}")
-
             # score
             if self.total_seen % 200 == 0:
                 anom_rate = self.total_anom / max(1, self.total_seen)
@@ -784,6 +842,18 @@ class NetworkEngine:
     # -------------------------
     # Helpers
     # -------------------------
+    def _is_benign_local_noise(self, feat) -> bool:
+        noisy_ports = {137, 138, 1900, 3702, 5353, 5355}
+        if feat.dport in noisy_ports or feat.sport in noisy_ports:
+            return True
+        if feat.is_multicast:
+            return True
+        if feat.dst_ip == "255.255.255.255":
+            return True
+        if feat.dst_ip.endswith(".255"):
+            return True
+        return False
+
     def _emit_verdict(self, feat, verdict: str, reasons: list[str]):
         if verdict == "normal":
             return

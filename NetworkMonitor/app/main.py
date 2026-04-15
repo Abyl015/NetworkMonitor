@@ -20,17 +20,14 @@ from PyQt6.QtWidgets import (
     QStackedWidget,
 )
 from PyQt6.QtCore import Qt, QTimer
-
+from NetworkMonitor.core.report_builder import build_html_report
 from NetworkMonitor.core.engine import NetworkEngine
 from NetworkMonitor.app.worker import CaptureWorker
 from NetworkMonitor.config.profile_manager import ProfileManager
 from NetworkMonitor.app.settings_dialog import SettingsDialog
 from NetworkMonitor.app.plot_widget import PlotWidget
 
-try:
-    from NetworkMonitor.reports.export import export_reports
-except Exception:
-    export_reports = None
+
 
 
 def load_qss(app: QApplication) -> None:
@@ -59,9 +56,7 @@ class MainWindow(QMainWindow):
         # применяем профиль ПОСЛЕ UI
         self.apply_profile_on_startup()
 
-        if export_reports is None:
-            self.export_btn.setEnabled(False)
-            self.export_btn.setToolTip("Модуль NetworkMonitor.reports.export не найден")
+
 
         # Таймер: раз в 1 сек обновляем графики из текущих значений engine
         self.timer = QTimer(self)
@@ -167,7 +162,7 @@ class MainWindow(QMainWindow):
         self.settings_btn.clicked.connect(self.open_settings)
         btn_row.addWidget(self.settings_btn)
 
-        self.export_btn = QPushButton("ЭКСПОРТ ОТЧЁТА (CSV)")
+        self.export_btn = QPushButton("Экспорт отчёта")
         self.export_btn.clicked.connect(self.export_report)
         btn_row.addWidget(self.export_btn)
 
@@ -248,6 +243,31 @@ class MainWindow(QMainWindow):
 
         layout.addStretch(1)
         return page
+
+    def export_report(self):
+        if not hasattr(self.engine, "current_session") or self.engine.current_session.started_at is None:
+            QMessageBox.warning(self, "Нет данных", "Сначала выполните мониторинг или анализ.")
+            return
+        if self.is_monitoring:
+            QMessageBox.warning(self, "Мониторинг активен", "Сначала остановите мониторинг, затем экспортируйте отчёт.")
+            return
+
+        html = build_html_report(self.engine.current_session, self.engine)
+
+        file_path, _ = QFileDialog.getSaveFileName(
+            self,
+            "Сохранить отчёт",
+            "network_report.html",
+            "HTML Files (*.html)"
+        )
+
+        if not file_path:
+            return
+
+        with open(file_path, "w", encoding="utf-8") as f:
+            f.write(html)
+
+        QMessageBox.information(self, "Готово", "Отчёт успешно сохранён.")
 
     def switch_page(self, index: int) -> None:
         self.pages.setCurrentIndex(index)
@@ -419,17 +439,7 @@ class MainWindow(QMainWindow):
             self.action_btn.setEnabled(False)
             self.engine.stop_capture()
 
-    def export_report(self) -> None:
-        if export_reports is None:
-            self.append_log("<span style='color:#f38ba8;'>[REPORT ERROR] export_reports не найден.</span>")
-            return
-        try:
-            csv_path, summary_path = export_reports()
-            self.append_log(f"<b style='color:#a6e3a1;'>[REPORT] CSV: {csv_path}</b>")
-            self.append_log(f"<b style='color:#a6e3a1;'>[REPORT] Summary: {summary_path}</b>")
-        except Exception as e:
-            self.append_log(f"<span style='color:#f38ba8;'>[REPORT ERROR] {type(e).__name__}: {e}</span>")
-            QMessageBox.critical(self, "Экспорт", f"Ошибка экспорта: {e}")
+
 
     def closeEvent(self, event):
         try:
