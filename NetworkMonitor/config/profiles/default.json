@@ -1,6 +1,6 @@
 {
   "name": "Default",
-  "sample_factor": 1,
+  "sample_factor": 5,
   "pps_window_sec": 10,
   "scan_ports_threshold": 50,
   "dos_pps_eff_threshold": 700,

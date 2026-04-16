@@ -31,6 +31,23 @@ def init_db():
             )
         """)
 
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS monitoring_sessions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                started_at TEXT,
+                stopped_at TEXT,
+                duration_sec INTEGER,
+                profile_name TEXT,
+                interface_name TEXT,
+                total_packets INTEGER,
+                total_anomalies INTEGER,
+                total_incidents INTEGER,
+                final_ib_score INTEGER,
+                summary_text TEXT,
+                report_path TEXT
+            )
+        """)
+
         conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_alerts_timestamp ON alerts(timestamp)"
         )
@@ -53,8 +70,52 @@ def add_alert(alert_type, description):
 def get_recent_alerts(limit=50):
     with get_connection() as conn:
         cursor = conn.execute(
-            "SELECT id, timestamp, alert_type, description "
-            "FROM alerts ORDER BY id DESC LIMIT ?",
+            "SELECT id, timestamp, alert_type, description FROM alerts ORDER BY id DESC LIMIT ?",
             (limit,)
         )
         return cursor.fetchall()
+
+
+def save_session(session: dict):
+    with get_connection() as conn:
+        conn.execute("""
+            INSERT INTO monitoring_sessions (
+                started_at, stopped_at, duration_sec,
+                profile_name, interface_name,
+                total_packets, total_anomalies, total_incidents,
+                final_ib_score, summary_text, report_path
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            session.get("started_at"),
+            session.get("stopped_at"),
+            session.get("duration_sec"),
+            session.get("profile_name"),
+            session.get("interface_name"),
+            session.get("total_packets"),
+            session.get("total_anomalies"),
+            session.get("total_incidents"),
+            session.get("final_ib_score"),
+            session.get("summary_text"),
+            session.get("report_path"),
+        ))
+        conn.commit()
+
+
+def get_sessions(limit=50):
+    with get_connection() as conn:
+        cursor = conn.execute("""
+            SELECT id, started_at, duration_sec, profile_name,
+                   interface_name, final_ib_score
+            FROM monitoring_sessions
+            ORDER BY id DESC
+            LIMIT ?
+        """, (limit,))
+        return cursor.fetchall()
+
+
+def get_session_by_id(session_id):
+    with get_connection() as conn:
+        cursor = conn.execute("""
+            SELECT * FROM monitoring_sessions WHERE id=?
+        """, (session_id,))
+        return cursor.fetchone()

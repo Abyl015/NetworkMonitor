@@ -13,8 +13,8 @@ from NetworkMonitor.core.features import extract_features
 from NetworkMonitor.core.rules import RuleEngine
 from NetworkMonitor.core.scoring import calc_security_assessment, format_assessment_line
 from NetworkMonitor.core.ml import MLDetector, MLConfig
-from NetworkMonitor.storage.database import init_db, add_alert
 from datetime import datetime
+from NetworkMonitor.storage.database import init_db, add_alert, save_session
 from NetworkMonitor.core.session import MonitoringSession
 scapy.conf.noipaddrs = True
 
@@ -75,6 +75,7 @@ class NetworkEngine:
             )
         finally:
             self._sniffer = None
+
 
     def apply_profile(self, profile, profile_name: str = "default"):
         """
@@ -461,6 +462,7 @@ class NetworkEngine:
             self.current_session.total_incidents = len(self.incidents)
             self.current_session.final_ib_score = self.last_ib_score
             self.current_session.final_ib_level = self.last_ib_level
+            self.save_current_session()
             self.stop_capture()
             self._log("<b style='color:#f38ba8;'>[SYSTEM] Захват остановлен.</b>")
 
@@ -536,6 +538,7 @@ class NetworkEngine:
             self.current_session.total_incidents = len(self.incidents)
             self.current_session.final_ib_score = self.last_ib_score
             self.current_session.final_ib_level = self.last_ib_level
+            self.save_current_session()
             self.running = False
             self._log("<b style='color:#f38ba8;'>[PCAP] Offline-анализ остановлен.</b>")
     # -------------------------
@@ -1087,6 +1090,35 @@ class NetworkEngine:
 
         return MLDetector(model_path=model_path, cfg=ml_cfg)
 
+    def save_current_session(self):
+        if not self.current_session or not self.current_session.started_at:
+            return
+        if self.packet_count <= 0:
+            return
+
+        started = self.current_session.started_at
+        stopped = self.current_session.stopped_at or datetime.now()
+        duration = int((stopped - started).total_seconds())
+
+        summary_text = ""
+        if getattr(self, "last_assessment", None):
+            summary_text = self.last_assessment.get("summary", "")
+
+        session_data = {
+            "started_at": started.strftime("%Y-%m-%d %H:%M:%S"),
+            "stopped_at": stopped.strftime("%Y-%m-%d %H:%M:%S"),
+            "duration_sec": duration,
+            "profile_name": self.profile_name,
+            "interface_name": self.current_session.interface_name,
+            "total_packets": self.packet_count,
+            "total_anomalies": self.total_anom,
+            "total_incidents": len(self.incidents),
+            "final_ib_score": self.last_ib_score if self.last_ib_score is not None else 0,
+            "summary_text": summary_text,
+            "report_path": None,
+        }
+
+        save_session(session_data)
     def _safe_db(self, alert_type: str, desc: str):
         try:
             add_alert(alert_type, desc)

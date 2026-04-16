@@ -20,6 +20,7 @@ from PyQt6.QtWidgets import (
     QStackedWidget,
     QComboBox,
 )
+from NetworkMonitor.storage.database import get_sessions, get_session_by_id, init_db
 from PyQt6.QtCore import Qt, QTimer
 from NetworkMonitor.core.report_builder import build_html_report
 from NetworkMonitor.core.engine import NetworkEngine
@@ -28,6 +29,7 @@ from NetworkMonitor.config.profile_manager import ProfileManager
 from NetworkMonitor.app.settings_dialog import SettingsDialog
 from NetworkMonitor.app.plot_widget import PlotWidget
 
+from PyQt6.QtWidgets import QListWidget
 
 
 
@@ -49,7 +51,8 @@ class MainWindow(QMainWindow):
         self.is_monitoring = False
         self.current_mode = "idle"
         self.last_pcap_path: str | None = None
-
+        super().__init__()
+        init_db()
         self._build_ui()
         self.load_interfaces_to_combo()
 
@@ -96,12 +99,22 @@ class MainWindow(QMainWindow):
         self.settings_nav_btn.setCheckable(True)
         self.settings_nav_btn.clicked.connect(lambda: self.switch_page(2))
         nav_layout.addWidget(self.settings_nav_btn)
+
+        self.sessions_nav_btn = QPushButton("Sessions")
+        self.sessions_nav_btn.setCheckable(True)
+        self.sessions_nav_btn.clicked.connect(lambda: self.switch_page(3))
+        nav_layout.addWidget(self.sessions_nav_btn)
+
         nav_layout.addStretch(1)
 
         self.pages = QStackedWidget()
         self.pages.addWidget(self._build_main_page())
         self.pages.addWidget(self._build_pcap_page())
         self.pages.addWidget(self._build_settings_page())
+
+        self.sessions_page = QWidget()
+        self._build_sessions_page()
+        self.pages.addWidget(self.sessions_page)
 
         root_layout.addWidget(sidebar, stretch=0)
         root_layout.addWidget(self.pages, stretch=1)
@@ -272,6 +285,20 @@ class MainWindow(QMainWindow):
         layout.addStretch(1)
         return page
 
+    def _build_sessions_page(self):
+        layout = QHBoxLayout(self.sessions_page)
+
+        self.sessions_list = QListWidget()
+        layout.addWidget(self.sessions_list, 1)
+
+        self.session_details = QTextEdit()
+        self.session_details.setReadOnly(True)
+        layout.addWidget(self.session_details, 2)
+
+        self.sessions_list.itemClicked.connect(self.show_session_details)
+
+        self.load_sessions()
+
     def export_report(self):
         if not hasattr(self.engine, "current_session") or self.engine.current_session.started_at is None:
             QMessageBox.warning(self, "Нет данных", "Сначала выполните мониторинг или анализ.")
@@ -300,11 +327,59 @@ class MainWindow(QMainWindow):
     def switch_page(self, index: int) -> None:
         self.pages.setCurrentIndex(index)
 
-        nav_buttons = [self.main_nav_btn, self.pcap_nav_btn, self.settings_nav_btn]
+        nav_buttons = [
+            self.main_nav_btn,
+            self.pcap_nav_btn,
+            self.settings_nav_btn,
+            self.sessions_nav_btn,
+        ]
+
         for i, btn in enumerate(nav_buttons):
             btn.setChecked(i == index)
             btn.setObjectName("nav_btn_active" if i == index else "nav_btn")
             btn.setStyle(btn.style())
+
+    def load_sessions(self):
+        self.sessions_list.clear()
+
+        sessions = get_sessions()
+
+        for s in sessions:
+            session_id, started, duration, profile, iface, score = s
+
+            text = f"{started} | {profile} | {iface} | {duration}s | IB={score}"
+            self.sessions_list.addItem(text)
+            self.sessions_list.item(self.sessions_list.count() - 1).setData(1, session_id)
+
+    def show_session_details(self, item):
+        session_id = item.data(1)
+        s = get_session_by_id(session_id)
+
+        if not s:
+            return
+
+        text = f"""
+    ID: {s[0]}
+    Start: {s[1]}
+    Stop: {s[2]}
+    Duration: {s[3]} sec
+
+    Profile: {s[4]}
+    Interface: {s[5]}
+
+    Packets: {s[6]}
+    Anomalies: {s[7]}
+    Incidents: {s[8]}
+
+    IB Score: {s[9]}
+
+    Summary:
+    {s[10]}
+
+    Report:
+    {s[11]}
+    """
+        self.session_details.setText(text)
 
     # -------- Profile apply --------
     def apply_profile_on_startup(self) -> None:
