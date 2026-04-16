@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import os
 import sys
+import webbrowser
 from pathlib import Path
 
 from PyQt6.QtWidgets import (
@@ -12,7 +14,6 @@ from PyQt6.QtWidgets import (
     QWidget,
     QPushButton,
     QLabel,
-    QListWidget,
     QMessageBox,
     QFileDialog,
     QFrame,
@@ -21,6 +22,7 @@ from PyQt6.QtWidgets import (
     QComboBox,
 )
 from NetworkMonitor.storage.database import get_sessions, get_session_by_id, init_db
+from NetworkMonitor.storage.database import get_last_session_id, update_session_report_path
 from PyQt6.QtCore import Qt, QTimer
 from NetworkMonitor.core.report_builder import build_html_report
 from NetworkMonitor.core.engine import NetworkEngine
@@ -288,14 +290,28 @@ class MainWindow(QMainWindow):
     def _build_sessions_page(self):
         layout = QHBoxLayout(self.sessions_page)
 
+        # Левая часть: список сессий
+        left_layout = QVBoxLayout()
         self.sessions_list = QListWidget()
-        layout.addWidget(self.sessions_list, 1)
+        self.sessions_list.itemClicked.connect(self.show_session_details)
+        left_layout.addWidget(self.sessions_list)
 
+        self.refresh_sessions_btn = QPushButton("Обновить список")
+        self.refresh_sessions_btn.clicked.connect(self.load_sessions)
+        left_layout.addWidget(self.refresh_sessions_btn)
+
+        # Правая часть: детали
+        right_layout = QVBoxLayout()
         self.session_details = QTextEdit()
         self.session_details.setReadOnly(True)
-        layout.addWidget(self.session_details, 2)
+        right_layout.addWidget(self.session_details)
 
-        self.sessions_list.itemClicked.connect(self.show_session_details)
+        self.open_report_btn = QPushButton("Открыть HTML-отчёт")
+        self.open_report_btn.clicked.connect(self.open_selected_session_report)
+        right_layout.addWidget(self.open_report_btn)
+
+        layout.addLayout(left_layout, 1)
+        layout.addLayout(right_layout, 2)
 
         self.load_sessions()
 
@@ -322,6 +338,12 @@ class MainWindow(QMainWindow):
         with open(file_path, "w", encoding="utf-8") as f:
             f.write(html)
 
+        session_id = get_last_session_id()
+        if session_id is not None:
+            update_session_report_path(session_id, file_path)
+
+        self.load_sessions()
+
         QMessageBox.information(self, "Готово", "Отчёт успешно сохранён.")
 
     def switch_page(self, index: int) -> None:
@@ -340,24 +362,40 @@ class MainWindow(QMainWindow):
             btn.setStyle(btn.style())
 
     def load_sessions(self):
+        init_db()
         self.sessions_list.clear()
 
         sessions = get_sessions()
 
+        if not sessions:
+            self.sessions_list.addItem("Сессий пока нет")
+            return
+
         for s in sessions:
             session_id, started, duration, profile, iface, score = s
 
+            started = started or "-"
+            profile = profile or "-"
+            iface = iface or "-"
+            duration = duration or 0
+            score = score if score is not None else "-"
+
             text = f"{started} | {profile} | {iface} | {duration}s | IB={score}"
             self.sessions_list.addItem(text)
-            self.sessions_list.item(self.sessions_list.count() - 1).setData(1, session_id)
+            self.sessions_list.item(self.sessions_list.count() - 1).setData(Qt.ItemDataRole.UserRole, session_id)
 
     def show_session_details(self, item):
-        session_id = item.data(1)
-        s = get_session_by_id(session_id)
-
-        if not s:
+        session_id = item.data(Qt.ItemDataRole.UserRole)
+        if session_id is None:
+            self.session_details.setText("Нет данных.")
             return
 
+        s = get_session_by_id(session_id)
+        if not s:
+            self.session_details.setText("Сессия не найдена.")
+            return
+
+        # Индексы соответствуют таблице monitoring_sessions
         text = f"""
     ID: {s[0]}
     Start: {s[1]}
@@ -374,12 +412,39 @@ class MainWindow(QMainWindow):
     IB Score: {s[9]}
 
     Summary:
-    {s[10]}
+    {s[10] or "-"}
 
-    Report:
-    {s[11]}
+    Report path:
+    {s[11] or "-"}
     """
         self.session_details.setText(text)
+
+    def open_selected_session_report(self):
+        item = self.sessions_list.currentItem()
+        if not item:
+            QMessageBox.warning(self, "Нет выбора", "Сначала выберите сессию.")
+            return
+
+        session_id = item.data(Qt.ItemDataRole.UserRole)
+        if session_id is None:
+            QMessageBox.warning(self, "Нет данных", "У этой строки нет данных сессии.")
+            return
+
+        s = get_session_by_id(session_id)
+        if not s:
+            QMessageBox.warning(self, "Ошибка", "Сессия не найдена.")
+            return
+
+        report_path = s[11]
+        if not report_path:
+            QMessageBox.information(self, "Нет отчёта", "Для этой сессии HTML-отчёт ещё не сохранён.")
+            return
+
+        if not os.path.exists(report_path):
+            QMessageBox.warning(self, "Файл не найден", f"HTML-отчёт не найден:\n{report_path}")
+            return
+
+        webbrowser.open(report_path)
 
     # -------- Profile apply --------
     def apply_profile_on_startup(self) -> None:

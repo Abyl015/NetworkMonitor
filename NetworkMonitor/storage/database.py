@@ -112,7 +112,23 @@ def get_sessions(limit=50):
         """, (limit,))
         return cursor.fetchall()
 
-
+def update_session_report_path(session_id, report_path):
+    with get_connection() as conn:
+        conn.execute("""
+            UPDATE monitoring_sessions
+            SET report_path = ?
+            WHERE id = ?
+        """, (report_path, session_id))
+        conn.commit()
+def get_last_session_id():
+    with get_connection() as conn:
+        cursor = conn.execute("""
+            SELECT id FROM monitoring_sessions
+            ORDER BY id DESC
+            LIMIT 1
+        """)
+        row = cursor.fetchone()
+        return row[0] if row else None
 def get_session_by_id(session_id):
     with get_connection() as conn:
         cursor = conn.execute("""
