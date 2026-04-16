@@ -1,205 +1,89 @@
-/* ====== Base window ====== */
-QMainWindow {
-    background-color: #0f111a;
-}
-
-/* ====== Labels ====== */
-QLabel {
-    color: #89b4fa;
-    font-family: "Segoe UI", sans-serif;
-    font-size: 14px;
-    font-weight: 700;
-    margin-bottom: 4px;
-}
-
-/* Для небольших инфо-лейблов (например IB score) */
-QLabel#ib_label {
-    color: #f9e2af;
-    font-weight: 700;
+/* === ОСНОВА === */
+QWidget {
+    background-color: #f5f6fa;
+    color: #2c2c2c;
+    font-family: Segoe UI, Arial;
     font-size: 13px;
 }
 
-/* ====== Log area ====== */
-QTextEdit {
-    background-color: #161925;
-    color: #a6adc8;
-    border: 2px solid #1e2233;
-    border-radius: 10px;
-    padding: 12px;
-    font-family: "Consolas", monospace;
-    font-size: 13px;
-}
-
-/* ====== List widget ====== */
-QListWidget {
-    background-color: #161925;
-    color: #f38ba8;
-    border: 2px solid #1e2233;
-    border-radius: 10px;
-    padding: 6px;
-    font-family: "Consolas", monospace;
-    font-size: 13px;
-}
-
-QListWidget::item {
-    padding: 6px 8px;
-    border-radius: 6px;
-}
-
-QListWidget::item:selected {
-    background: #1e2233;
-    color: #f38ba8;
-}
-
-/* ====== Buttons (base) ====== */
+/* === КНОПКИ === */
 QPushButton {
-    background-color: #23283d;
-    color: #cdd6f4;
-    border-radius: 8px;
-    padding: 12px 14px;
-    font-size: 14px;
-    font-weight: 700;
-    border: 1px solid #2b3352;
+    background-color: #ffffff;
+    border: 1px solid #dcdde1;
+    border-radius: 6px;
+    padding: 6px 12px;
 }
 
 QPushButton:hover {
-    background-color: #2b3352;
+    background-color: #eaf0ff;
+    border: 1px solid #4c8bf5;
 }
 
 QPushButton:pressed {
-    background-color: #1e2233;
+    background-color: #d6e4ff;
 }
 
-/* Disabled */
-QPushButton:disabled {
-    background-color: #1a1d2a;
-    color: #6c7086;
-    border: 1px solid #1e2233;
-}
-
-/* Primary (Start) button */
-QPushButton#primary_btn {
-    background-color: #31b53e;
-    border: none;
-    color: #ffffff;
-}
-
-QPushButton#primary_btn:hover {
-    background-color: #40cc4e;
-}
-
-/* Stop mode */
-QPushButton#stop_mode {
-    background-color: #f38ba8;
-    border: none;
-    color: #11111b;
-}
-
-QPushButton#stop_mode:hover {
-    background-color: #ff8091;
-}
-
-/* Secondary buttons (Profiles, Export) */
-QPushButton#secondary_btn {
-    background-color: #1e2233;
-    border: 1px solid #2b3352;
-    color: #cdd6f4;
-}
-
-QPushButton#secondary_btn:hover {
-    background-color: #23283d;
-}
-
-/* ====== Dialogs ====== */
-QDialog {
-    background-color: #0f111a;
-}
-
-/* ====== ComboBox ====== */
+/* === КОМБОБОКС (выбор интерфейса) === */
 QComboBox {
-    background-color: #161925;
-    color: #cdd6f4;
-    border: 2px solid #1e2233;
-    border-radius: 8px;
-    padding: 6px 10px;
-    font-size: 13px;
+    background-color: #ffffff;
+    border: 1px solid #dcdde1;
+    border-radius: 6px;
+    padding: 5px;
 }
 
 QComboBox:hover {
-    border: 2px solid #2b3352;
+    border: 1px solid #4c8bf5;
 }
 
-QComboBox QAbstractItemView {
-    background-color: #161925;
-    color: #cdd6f4;
-    selection-background-color: #1e2233;
-    border: 1px solid #2b3352;
-    outline: 0px;
-}
-
-/* ====== MessageBox ====== */
-QMessageBox {
-    background-color: #0f111a;
-}
-
-QMessageBox QLabel {
-    color: #cdd6f4;
-    font-size: 13px;
-    font-weight: 600;
-    text-transform: none;
-}
-
-/* ====== Tooltips ====== */
-QToolTip {
-    background-color: #161925;
-    color: #cdd6f4;
-    border: 1px solid #2b3352;
-    padding: 6px;
+/* === ТЕКСТОВОЕ ПОЛЕ ЛОГА === */
+QTextEdit {
+    background-color: #ffffff;
+    border: 1px solid #dcdde1;
     border-radius: 6px;
-    font-size: 12px;
-}
-/* ====== Navigation ====== */
-QWidget#sidebar {
-    background-color: #0b0d14;
-    border-right: 1px solid #1e2233;
-    min-width: 200px;
-    max-width: 240px;
-}
-
-QLabel#nav_title {
-    color: #22d3ee;
-    font-size: 18px;
-    font-weight: 800;
-    margin-bottom: 8px;
-}
-
-QPushButton#nav_btn {
-    text-align: left;
-    background-color: transparent;
-    border: 1px solid transparent;
-    border-radius: 6px;
-    color: #7f849c;
-    padding: 10px 12px;
-}
-
-QPushButton#nav_btn:hover {
-    background-color: #161925;
-    color: #cdd6f4;
-}
-
-QPushButton#nav_btn_active {
-    text-align: left;
-    background-color: #161925;
-    border: 1px solid #2b3352;
-    border-left: 3px solid #22d3ee;
-    border-radius: 6px;
-    color: #cdd6f4;
-    padding: 10px 12px;
-}
-
-QFrame#assessment_box {
-    background-color: #161925;
-    border: 1px solid #1e2233;
-    border-radius: 10px;
     padding: 8px;
+    color: #2c2c2c;
+}
+
+/* === СПИСОК === */
+QListWidget {
+    background-color: #ffffff;
+    border: 1px solid #dcdde1;
+    border-radius: 6px;
+}
+
+/* === САЙДБАР === */
+QFrame#sidebar {
+    background-color: #ffffff;
+    border-right: 1px solid #dcdde1;
+}
+
+/* === ЛЕЙБЛЫ === */
+QLabel {
+    color: #2c2c2c;
+}
+
+/* === СКРОЛЛ === */
+QScrollBar:vertical {
+    background: #f1f2f6;
+    width: 10px;
+}
+
+QScrollBar::handle:vertical {
+    background: #c7d0e0;
+    border-radius: 5px;
+}
+
+QScrollBar::handle:vertical:hover {
+    background: #aab4c8;
+}
+
+/* === АКЦЕНТ (кнопки действий) === */
+QPushButton#primary {
+    background-color: #4c8bf5;
+    color: white;
+    border: none;
+}
+
+QPushButton#primary:hover {
+    background-color: #3a6fd8;
 }
