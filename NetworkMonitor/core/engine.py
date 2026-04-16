@@ -50,6 +50,8 @@ class NetworkEngine:
         self.incidents = {}
         self.alert_dedup = AlertDedup(ttl_sec=300, max_size=10000)
         self.current_session = MonitoringSession()
+        self.selected_iface_name = None
+        self.debug_sampled_packets = 0
         self.debug_raw_packets = 0
         self.debug_feat_packets = 0
         self.debug_train_skip_noise = 0
@@ -299,6 +301,32 @@ class NetworkEngine:
     # -------------------------
     # Capture
     # -------------------------
+    def list_interfaces(self):
+        result = []
+
+        try:
+            interfaces = scapy.get_working_ifaces()
+            for iface in interfaces:
+                desc = getattr(iface, "description", "") or ""
+                name = getattr(iface, "name", "") or ""
+                ip = getattr(iface, "ip", None)
+
+                label = desc or name or str(iface)
+                result.append({
+                    "name": name,
+                    "description": desc,
+                    "ip": str(ip) if ip else "",
+                    "label": label,
+                    "iface_obj": iface,
+                })
+        except Exception as e:
+            self._log(f"<span style='color:#f38ba8;'>[IFACE ERROR] {type(e).__name__}: {e}</span>")
+
+        return result
+
+    def set_selected_interface(self, iface_name: str | None):
+        self.selected_iface_name = iface_name
+
     def get_working_iface(self):
         try:
             interfaces = scapy.get_working_ifaces()
@@ -308,6 +336,15 @@ class NetworkEngine:
             )
             return scapy.conf.iface
 
+        # 1. если пользователь выбрал вручную
+        if self.selected_iface_name:
+            for iface in interfaces:
+                name = getattr(iface, "name", "") or ""
+                desc = getattr(iface, "description", "") or ""
+                if self.selected_iface_name in (name, desc):
+                    return iface
+
+        # 2. fallback на старую авто-логику
         best_iface = None
 
         for iface in interfaces:
@@ -320,16 +357,13 @@ class NetworkEngine:
             if not ip or ip == "127.0.0.1":
                 continue
 
-            # пропускаем APIPA
             if str(ip).startswith("169.254."):
                 continue
 
-            # пропускаем виртуальные / loopback / bluetooth
             bad_words = ["bluetooth", "virtual", "loopback", "npcap", "vmware", "host-only"]
             if any(word in name for word in bad_words):
                 continue
 
-            # предпочитаем приватный нормальный IP
             if self._is_private_ip(str(ip)):
                 return iface
 
@@ -511,7 +545,7 @@ class NetworkEngine:
         try:
             self.packet_count += 1
             self.debug_raw_packets += 1
-            if self.debug_raw_packets % 100 == 0:
+            if self.debug_raw_packets % 10 == 0:
                 self._log(f"<span style='color:#89b4fa;'>[DEBUG] raw packets: {self.debug_raw_packets}</span>")
 
             if pkt is None:
@@ -627,6 +661,12 @@ class NetworkEngine:
             # sampling только для rules/ML/scoring
             if self.sample_factor > 1 and (self.packet_count % self.sample_factor != 0):
                 return
+
+            self.debug_sampled_packets += 1
+            if self.debug_sampled_packets % 10 == 0:
+                self._log(
+                    f"<span style='color:#a6e3a1;'>[DEBUG] sampled packets: {self.debug_sampled_packets}</span>"
+                )
             if self._is_service_discovery_noise(feat):
                 rule_metrics = {
                     "pps": 0.0,
@@ -961,7 +1001,7 @@ class NetworkEngine:
             return "malicious"
 
         # Несколько аномалий или rule-hit = suspicious
-        if inc["scan_hits"] > 0 or inc["dos_hits"] > 0 or inc["ml_hits"] >= 3 or inc["infected_host"]:
+        if inc["scan_hits"] > 0 or inc["dos_hits"] > 0 or inc["ml_hits"] >= 10 or inc["infected_host"]:
             return "suspicious"
 
         return "normal"
@@ -1058,6 +1098,7 @@ class NetworkEngine:
     def _reset_runtime_state(self):
         if hasattr(self, "incidents"):
             self.incidents.clear()
+        self.debug_sampled_packets = 0
         self.alert_dedup.clear()
         self.attacker_stats.clear()
         self.packet_count = 0

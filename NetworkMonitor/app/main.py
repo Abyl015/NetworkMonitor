@@ -18,6 +18,7 @@ from PyQt6.QtWidgets import (
     QFrame,
     QGridLayout,
     QStackedWidget,
+    QComboBox,
 )
 from PyQt6.QtCore import Qt, QTimer
 from NetworkMonitor.core.report_builder import build_html_report
@@ -50,6 +51,7 @@ class MainWindow(QMainWindow):
         self.last_pcap_path: str | None = None
 
         self._build_ui()
+        self.load_interfaces_to_combo()
 
         self.append_log("<b style='color:#89dceb;'>[SYSTEM] Готово. Нажми 'Запустить мониторинг'.</b>")
 
@@ -162,6 +164,14 @@ class MainWindow(QMainWindow):
         self.settings_btn.clicked.connect(self.open_settings)
         btn_row.addWidget(self.settings_btn)
 
+        self.iface_combo = QComboBox()
+        self.iface_combo.setMinimumWidth(280)
+        btn_row.addWidget(self.iface_combo)
+
+        self.refresh_ifaces_btn = QPushButton("Обновить интерфейс")
+        self.refresh_ifaces_btn.clicked.connect(self.load_interfaces_to_combo)
+        btn_row.addWidget(self.refresh_ifaces_btn)
+
         self.export_btn = QPushButton("Экспорт отчёта")
         self.export_btn.clicked.connect(self.export_report)
         btn_row.addWidget(self.export_btn)
@@ -220,6 +230,24 @@ class MainWindow(QMainWindow):
         self.pcap_log_area.setReadOnly(True)
         layout.addWidget(self.pcap_log_area)
         return page
+
+    def load_interfaces_to_combo(self):
+        self.iface_combo.clear()
+
+        interfaces = self.engine.list_interfaces()
+
+        if not interfaces:
+            self.iface_combo.addItem("Интерфейсы не найдены", None)
+            return
+
+        self.iface_combo.addItem("Автовыбор", None)
+
+        for item in interfaces:
+            text = item["label"]
+            if item["ip"]:
+                text += f" | IP: {item['ip']}"
+            data_value = item["name"] or item["description"] or item["label"]
+            self.iface_combo.addItem(text, data_value)
 
     def _build_settings_page(self) -> QWidget:
         page = QWidget()
@@ -432,6 +460,9 @@ class MainWindow(QMainWindow):
             self.set_status_text("идёт live-мониторинг")
             self.update_assessment_panel()
             self.append_log("<b style='color:#a6e3a1;'>[SYSTEM] Мониторинг запущен...</b>")
+
+            selected_iface = self.iface_combo.currentData()
+            self.engine.set_selected_interface(selected_iface)
 
             self.start_worker(mode="live")
         else:
