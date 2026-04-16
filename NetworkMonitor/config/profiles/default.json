@@ -1,14 +1,12 @@
-﻿{
+{
   "name": "Default",
-  "sample_factor": 20,
+  "sample_factor": 5,
   "pps_window_sec": 10,
   "scan_ports_threshold": 50,
-  "dos_pps_eff_threshold": 100,
+  "dos_pps_eff_threshold": 700,
   "ml": {
+    "train_size": 2000,
     "contamination": 0.005,
-    "n_estimators": 50,
-    "train_packets": 500
+    "n_estimators": 50
   }
 }
-
-

@@ -1,26 +1,36 @@
-# NetworkMonitor/app/main.py
 from __future__ import annotations
 
 import sys
 from pathlib import Path
 
 from PyQt6.QtWidgets import (
-    QApplication, QMainWindow, QTextEdit, QVBoxLayout, QHBoxLayout,
-    QWidget, QPushButton, QLabel, QListWidget, QMessageBox,
-    QFileDialog, QFrame, QGridLayout
+    QApplication,
+    QMainWindow,
+    QTextEdit,
+    QVBoxLayout,
+    QHBoxLayout,
+    QWidget,
+    QPushButton,
+    QLabel,
+    QListWidget,
+    QMessageBox,
+    QFileDialog,
+    QFrame,
+    QGridLayout,
+    QStackedWidget,
+    QComboBox,
 )
+from NetworkMonitor.storage.database import get_sessions, get_session_by_id, init_db
 from PyQt6.QtCore import Qt, QTimer
-
+from NetworkMonitor.core.report_builder import build_html_report
 from NetworkMonitor.core.engine import NetworkEngine
 from NetworkMonitor.app.worker import CaptureWorker
 from NetworkMonitor.config.profile_manager import ProfileManager
 from NetworkMonitor.app.settings_dialog import SettingsDialog
 from NetworkMonitor.app.plot_widget import PlotWidget
 
-try:
-    from NetworkMonitor.reports.export import export_reports
-except Exception:
-    export_reports = None
+from PyQt6.QtWidgets import QListWidget
+
 
 
 def load_qss(app: QApplication) -> None:
@@ -34,17 +44,88 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("AI Network Guardian v2.0")
-        self.resize(1200, 720)
+        self.resize(1280, 760)
 
         self.engine = NetworkEngine(callback=None)
         self.worker: CaptureWorker | None = None
         self.is_monitoring = False
         self.current_mode = "idle"
         self.last_pcap_path: str | None = None
+        super().__init__()
+        init_db()
+        self._build_ui()
+        self.load_interfaces_to_combo()
+
+        self.append_log("<b style='color:#89dceb;'>[SYSTEM] Готово. Нажми 'Запустить мониторинг'.</b>")
+
+        # применяем профиль ПОСЛЕ UI
+        self.apply_profile_on_startup()
 
 
-        # -------- UI --------
-        main_layout = QHBoxLayout()
+
+        # Таймер: раз в 1 сек обновляем графики из текущих значений engine
+        self.timer = QTimer(self)
+        self.timer.setInterval(1000)
+        self.timer.timeout.connect(self.refresh_graphs)
+        self.timer.start()
+
+    def _build_ui(self) -> None:
+        root = QWidget()
+        root_layout = QHBoxLayout(root)
+        root_layout.setContentsMargins(0, 0, 0, 0)
+        root_layout.setSpacing(0)
+
+        sidebar = QWidget()
+        sidebar.setObjectName("sidebar")
+        nav_layout = QVBoxLayout(sidebar)
+        nav_layout.setContentsMargins(14, 16, 14, 16)
+        nav_layout.setSpacing(8)
+
+        nav_title = QLabel("SENTINEL")
+        nav_title.setObjectName("nav_title")
+        nav_layout.addWidget(nav_title)
+
+        self.main_nav_btn = QPushButton("Main")
+        self.main_nav_btn.setCheckable(True)
+        self.main_nav_btn.clicked.connect(lambda: self.switch_page(0))
+        nav_layout.addWidget(self.main_nav_btn)
+
+        self.pcap_nav_btn = QPushButton("PCAP")
+        self.pcap_nav_btn.setCheckable(True)
+        self.pcap_nav_btn.clicked.connect(lambda: self.switch_page(1))
+        nav_layout.addWidget(self.pcap_nav_btn)
+
+        self.settings_nav_btn = QPushButton("Settings/Profile")
+        self.settings_nav_btn.setCheckable(True)
+        self.settings_nav_btn.clicked.connect(lambda: self.switch_page(2))
+        nav_layout.addWidget(self.settings_nav_btn)
+
+        self.sessions_nav_btn = QPushButton("Sessions")
+        self.sessions_nav_btn.setCheckable(True)
+        self.sessions_nav_btn.clicked.connect(lambda: self.switch_page(3))
+        nav_layout.addWidget(self.sessions_nav_btn)
+
+        nav_layout.addStretch(1)
+
+        self.pages = QStackedWidget()
+        self.pages.addWidget(self._build_main_page())
+        self.pages.addWidget(self._build_pcap_page())
+        self.pages.addWidget(self._build_settings_page())
+
+        self.sessions_page = QWidget()
+        self._build_sessions_page()
+        self.pages.addWidget(self.sessions_page)
+
+        root_layout.addWidget(sidebar, stretch=0)
+        root_layout.addWidget(self.pages, stretch=1)
+
+        self.setCentralWidget(root)
+        self.switch_page(0)
+
+    def _build_main_page(self) -> QWidget:
+        page = QWidget()
+        main_layout = QHBoxLayout(page)
+        main_layout.setContentsMargins(14, 14, 14, 14)
 
         # Left
         left_layout = QVBoxLayout()
@@ -88,18 +169,23 @@ class MainWindow(QMainWindow):
         btn_row = QHBoxLayout()
 
         self.action_btn = QPushButton("ЗАПУСТИТЬ МОНИТОРИНГ")
+        self.action_btn.setObjectName("primary_btn")
         self.action_btn.clicked.connect(self.toggle_monitoring)
         btn_row.addWidget(self.action_btn)
-
-        self.pcap_btn = QPushButton("ОТКРЫТЬ PCAP")
-        self.pcap_btn.clicked.connect(self.open_pcap)
-        btn_row.addWidget(self.pcap_btn)
 
         self.settings_btn = QPushButton("ПРОФИЛИ / НАСТРОЙКИ")
         self.settings_btn.clicked.connect(self.open_settings)
         btn_row.addWidget(self.settings_btn)
 
-        self.export_btn = QPushButton("ЭКСПОРТ ОТЧЁТА (CSV)")
+        self.iface_combo = QComboBox()
+        self.iface_combo.setMinimumWidth(280)
+        btn_row.addWidget(self.iface_combo)
+
+        self.refresh_ifaces_btn = QPushButton("Обновить интерфейс")
+        self.refresh_ifaces_btn.clicked.connect(self.load_interfaces_to_combo)
+        btn_row.addWidget(self.refresh_ifaces_btn)
+
+        self.export_btn = QPushButton("Экспорт отчёта")
         self.export_btn.clicked.connect(self.export_report)
         btn_row.addWidget(self.export_btn)
 
@@ -122,26 +208,178 @@ class MainWindow(QMainWindow):
 
         main_layout.addLayout(left_layout, stretch=3)
         main_layout.addLayout(right_layout, stretch=2)
+        return page
 
-        container = QWidget()
-        container.setLayout(main_layout)
-        self.setCentralWidget(container)
+    def _build_pcap_page(self) -> QWidget:
+        page = QWidget()
+        layout = QVBoxLayout(page)
+        layout.setContentsMargins(14, 14, 14, 14)
+        layout.setSpacing(10)
 
-        self.append_log("<b style='color:#89dceb;'>[SYSTEM] Готово. Нажми 'Запустить мониторинг'.</b>")
+        title = QLabel("📁 PCAP Analysis")
+        layout.addWidget(title)
 
-        # применяем профиль ПОСЛЕ UI
-        self.apply_profile_on_startup()
+        desc = QLabel("Отдельный экран для offline-анализа PCAP. Выберите файл и запустите обработку.")
+        desc.setWordWrap(True)
+        layout.addWidget(desc)
 
-        if export_reports is None:
-            self.export_btn.setEnabled(False)
-            self.export_btn.setToolTip("Модуль NetworkMonitor.reports.export не найден")
+        pcap_actions = QHBoxLayout()
+        self.pcap_btn = QPushButton("ВЫБРАТЬ PCAP ФАЙЛ")
+        self.pcap_btn.clicked.connect(self.open_pcap)
+        pcap_actions.addWidget(self.pcap_btn)
 
-        # Таймер: раз в 1 сек обновляем графики из текущих значений engine
-        self.timer = QTimer(self)
-        self.timer.setInterval(1000)
-        self.timer.timeout.connect(self.refresh_graphs)
-        self.timer.start()
+        self.open_main_btn = QPushButton("ПЕРЕЙТИ НА MAIN")
+        self.open_main_btn.clicked.connect(lambda: self.switch_page(0))
+        pcap_actions.addWidget(self.open_main_btn)
+        layout.addLayout(pcap_actions)
 
+        self.pcap_state_label = QLabel("Состояние: ожидание файла")
+        layout.addWidget(self.pcap_state_label)
+
+        self.pcap_stats_list = QListWidget()
+        layout.addWidget(self.pcap_stats_list)
+
+        self.pcap_log_area = QTextEdit()
+        self.pcap_log_area.setReadOnly(True)
+        layout.addWidget(self.pcap_log_area)
+        return page
+
+    def load_interfaces_to_combo(self):
+        self.iface_combo.clear()
+
+        interfaces = self.engine.list_interfaces()
+
+        if not interfaces:
+            self.iface_combo.addItem("Интерфейсы не найдены", None)
+            return
+
+        self.iface_combo.addItem("Автовыбор", None)
+
+        for item in interfaces:
+            text = item["label"]
+            if item["ip"]:
+                text += f" | IP: {item['ip']}"
+            data_value = item["name"] or item["description"] or item["label"]
+            self.iface_combo.addItem(text, data_value)
+
+    def _build_settings_page(self) -> QWidget:
+        page = QWidget()
+        layout = QVBoxLayout(page)
+        layout.setContentsMargins(14, 14, 14, 14)
+        layout.setSpacing(10)
+
+        title = QLabel("⚙️ Settings / Profile")
+        layout.addWidget(title)
+
+        desc = QLabel(
+            "Экран управления профилями и параметрами детектора. "
+            "На этом этапе используется существующий диалог настроек."
+        )
+        desc.setWordWrap(True)
+        layout.addWidget(desc)
+
+        self.settings_page_btn = QPushButton("ОТКРЫТЬ ДИАЛОГ НАСТРОЕК")
+        self.settings_page_btn.clicked.connect(self.open_settings)
+        layout.addWidget(self.settings_page_btn)
+
+        layout.addStretch(1)
+        return page
+
+    def _build_sessions_page(self):
+        layout = QHBoxLayout(self.sessions_page)
+
+        self.sessions_list = QListWidget()
+        layout.addWidget(self.sessions_list, 1)
+
+        self.session_details = QTextEdit()
+        self.session_details.setReadOnly(True)
+        layout.addWidget(self.session_details, 2)
+
+        self.sessions_list.itemClicked.connect(self.show_session_details)
+
+        self.load_sessions()
+
+    def export_report(self):
+        if not hasattr(self.engine, "current_session") or self.engine.current_session.started_at is None:
+            QMessageBox.warning(self, "Нет данных", "Сначала выполните мониторинг или анализ.")
+            return
+        if self.is_monitoring:
+            QMessageBox.warning(self, "Мониторинг активен", "Сначала остановите мониторинг, затем экспортируйте отчёт.")
+            return
+
+        html = build_html_report(self.engine.current_session, self.engine)
+
+        file_path, _ = QFileDialog.getSaveFileName(
+            self,
+            "Сохранить отчёт",
+            "network_report.html",
+            "HTML Files (*.html)"
+        )
+
+        if not file_path:
+            return
+
+        with open(file_path, "w", encoding="utf-8") as f:
+            f.write(html)
+
+        QMessageBox.information(self, "Готово", "Отчёт успешно сохранён.")
+
+    def switch_page(self, index: int) -> None:
+        self.pages.setCurrentIndex(index)
+
+        nav_buttons = [
+            self.main_nav_btn,
+            self.pcap_nav_btn,
+            self.settings_nav_btn,
+            self.sessions_nav_btn,
+        ]
+
+        for i, btn in enumerate(nav_buttons):
+            btn.setChecked(i == index)
+            btn.setObjectName("nav_btn_active" if i == index else "nav_btn")
+            btn.setStyle(btn.style())
+
+    def load_sessions(self):
+        self.sessions_list.clear()
+
+        sessions = get_sessions()
+
+        for s in sessions:
+            session_id, started, duration, profile, iface, score = s
+
+            text = f"{started} | {profile} | {iface} | {duration}s | IB={score}"
+            self.sessions_list.addItem(text)
+            self.sessions_list.item(self.sessions_list.count() - 1).setData(1, session_id)
+
+    def show_session_details(self, item):
+        session_id = item.data(1)
+        s = get_session_by_id(session_id)
+
+        if not s:
+            return
+
+        text = f"""
+    ID: {s[0]}
+    Start: {s[1]}
+    Stop: {s[2]}
+    Duration: {s[3]} sec
+
+    Profile: {s[4]}
+    Interface: {s[5]}
+
+    Packets: {s[6]}
+    Anomalies: {s[7]}
+    Incidents: {s[8]}
+
+    IB Score: {s[9]}
+
+    Summary:
+    {s[10]}
+
+    Report:
+    {s[11]}
+    """
+        self.session_details.setText(text)
 
     # -------- Profile apply --------
     def apply_profile_on_startup(self) -> None:
@@ -173,6 +411,9 @@ class MainWindow(QMainWindow):
         self.log_area.append(msg)
         self.log_area.verticalScrollBar().setValue(self.log_area.verticalScrollBar().maximum())
 
+        self.pcap_log_area.append(msg)
+        self.pcap_log_area.verticalScrollBar().setValue(self.pcap_log_area.verticalScrollBar().maximum())
+
     def update_assessment_panel(self) -> None:
         assessment = getattr(self.engine, "last_assessment", None)
         ready = bool(getattr(self.engine, "assessment_ready", False))
@@ -197,6 +438,7 @@ class MainWindow(QMainWindow):
 
     def set_status_text(self, text: str) -> None:
         self.status_label.setText(f"Статус: {text}")
+        self.pcap_state_label.setText(f"Состояние: {text}")
 
     def start_worker(self, mode: str, pcap_path: str | None = None) -> None:
         self.worker = CaptureWorker(self.engine, mode=mode, pcap_path=pcap_path)
@@ -213,11 +455,12 @@ class MainWindow(QMainWindow):
             self,
             "Выберите PCAP файл",
             "",
-            "PCAP Files (*.pcap *.pcapng);;All Files (*)"
+            "PCAP Files (*.pcap *.pcapng);;All Files (*)",
         )
         if not file_path:
             return
 
+        self.switch_page(1)
         self.last_pcap_path = file_path
         self.is_monitoring = True
         self.current_mode = "pcap"
@@ -225,15 +468,20 @@ class MainWindow(QMainWindow):
         self.action_btn.setEnabled(False)
         self.settings_btn.setEnabled(False)
         self.pcap_btn.setEnabled(False)
+        self.settings_page_btn.setEnabled(False)
 
         self.set_status_text("offline-анализ PCAP")
         self.append_log(f"<b style='color:#89dceb;'>[SYSTEM] Запуск PCAP анализа: {file_path}</b>")
 
         self.start_worker(mode="pcap", pcap_path=file_path)
+
     def update_stats_display(self) -> None:
         self.stats_list.clear()
+        self.pcap_stats_list.clear()
         for ip, count in self.engine.attacker_stats.most_common(10):
-            self.stats_list.addItem(f"{ip} → {count} событий")
+            line = f"{ip} → {count} событий"
+            self.stats_list.addItem(line)
+            self.pcap_stats_list.addItem(line)
 
     def update_ib_label(self) -> None:
         self.update_assessment_panel()
@@ -259,9 +507,10 @@ class MainWindow(QMainWindow):
         self.action_btn.setEnabled(True)
         self.pcap_btn.setEnabled(True)
         self.settings_btn.setEnabled(True)
+        self.settings_page_btn.setEnabled(True)
 
         self.action_btn.setText("ЗАПУСТИТЬ МОНИТОРИНГ")
-        self.action_btn.setObjectName("")
+        self.action_btn.setObjectName("primary_btn")
         self.action_btn.setStyle(self.action_btn.style())
 
         self.set_status_text("ожидание запуска")
@@ -271,6 +520,7 @@ class MainWindow(QMainWindow):
     # -------- Actions --------
     def toggle_monitoring(self) -> None:
         if not self.is_monitoring:
+            self.switch_page(0)
             self.is_monitoring = True
             self.current_mode = "live"
 
@@ -280,10 +530,14 @@ class MainWindow(QMainWindow):
 
             self.settings_btn.setEnabled(False)
             self.pcap_btn.setEnabled(False)
+            self.settings_page_btn.setEnabled(False)
 
             self.set_status_text("идёт live-мониторинг")
             self.update_assessment_panel()
             self.append_log("<b style='color:#a6e3a1;'>[SYSTEM] Мониторинг запущен...</b>")
+
+            selected_iface = self.iface_combo.currentData()
+            self.engine.set_selected_interface(selected_iface)
 
             self.start_worker(mode="live")
         else:
@@ -291,17 +545,7 @@ class MainWindow(QMainWindow):
             self.action_btn.setEnabled(False)
             self.engine.stop_capture()
 
-    def export_report(self) -> None:
-        if export_reports is None:
-            self.append_log("<span style='color:#f38ba8;'>[REPORT ERROR] export_reports не найден.</span>")
-            return
-        try:
-            csv_path, summary_path = export_reports()
-            self.append_log(f"<b style='color:#a6e3a1;'>[REPORT] CSV: {csv_path}</b>")
-            self.append_log(f"<b style='color:#a6e3a1;'>[REPORT] Summary: {summary_path}</b>")
-        except Exception as e:
-            self.append_log(f"<span style='color:#f38ba8;'>[REPORT ERROR] {type(e).__name__}: {e}</span>")
-            QMessageBox.critical(self, "Экспорт", f"Ошибка экспорта: {e}")
+
 
     def closeEvent(self, event):
         try:

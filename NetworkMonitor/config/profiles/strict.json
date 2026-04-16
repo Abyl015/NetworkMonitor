@@ -1,13 +1,12 @@
-﻿{
+{
   "name": "Strict",
-  "sample_factor": 10,
+  "sample_factor": 1,
   "pps_window_sec": 10,
-  "scan_ports_threshold": 30,
-  "dos_pps_eff_threshold": 80,
-
+  "scan_ports_threshold": 10,
+  "dos_pps_eff_threshold": 30,
   "ml": {
+    "train_size": 700,
     "contamination": 0.01,
-    "n_estimators": 80,
-    "train_packets": 700
+    "n_estimators": 80
   }
 }

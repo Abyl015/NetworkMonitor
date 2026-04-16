@@ -1,0 +1,14 @@
+Report time: 2026-04-14T15:37:09.508978
+DB: C:\Users\kuand\PycharmProjects\NetworkMonitor\NetworkMonitor\storage\traffic_data.db
+Total alerts: 4331
+
+By type:
+- ML_Anomaly: 2109
+- EVENT_VERDICT: 1218
+- INCIDENT: 617
+- ML_ANOMALY: 354
+- IOC_MATCH: 16
+- DOS_SUSPECT: 10
+- INFECTED_HOST_CANDIDATE: 3
+- SYSTEM: 3
+- PORT_SCAN_SUSPECT: 1
