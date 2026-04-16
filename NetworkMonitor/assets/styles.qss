@@ -1,89 +1,284 @@
-/* === ОСНОВА === */
 QWidget {
-    background-color: #f5f6fa;
-    color: #2c2c2c;
-    font-family: Segoe UI, Arial;
+    background-color: #f4f7fb;
+    color: #1f2937;
+    font-family: "Segoe UI", Arial;
     font-size: 13px;
 }
 
-/* === КНОПКИ === */
+QWidget#sidebar {
+    background-color: #0f172a;
+    border-right: 1px solid #1e293b;
+}
+
+QLabel#nav_title {
+    color: #f8fafc;
+    font-size: 20px;
+    font-weight: 700;
+}
+
+QLabel#nav_subtitle {
+    color: #94a3b8;
+    font-size: 12px;
+    margin-bottom: 12px;
+}
+
+QPushButton#nav_btn,
+QPushButton#nav_btn_active {
+    text-align: left;
+    padding: 12px 14px;
+    border-radius: 10px;
+    border: 1px solid transparent;
+}
+
+QPushButton#nav_btn {
+    background-color: transparent;
+    color: #cbd5e1;
+}
+
+QPushButton#nav_btn:hover {
+    background-color: #162036;
+    border: 1px solid #24324c;
+}
+
+QPushButton#nav_btn_active {
+    background-color: #1d4ed8;
+    color: white;
+    font-weight: 600;
+}
+
+QFrame#top_bar,
+QFrame#panel_card,
+QFrame#metric_card,
+QFrame#summary_banner {
+    background-color: white;
+    border: 1px solid #dbe3ea;
+    border-radius: 14px;
+}
+
+QLabel#page_title {
+    font-size: 22px;
+    font-weight: 700;
+    color: #111827;
+}
+
+QLabel#page_subtitle {
+    color: #64748b;
+}
+
+QLabel#section_title {
+    font-size: 15px;
+    font-weight: 600;
+    color: #0f172a;
+}
+
+QLabel#card_title {
+    color: #64748b;
+    font-size: 12px;
+}
+
+QLabel#card_value {
+    color: #0f172a;
+    font-size: 26px;
+    font-weight: 700;
+}
+
+QLabel#card_subtitle {
+    color: #475569;
+    font-size: 12px;
+}
+
+QLabel#status_chip_idle,
+QLabel#status_chip_live {
+    padding: 8px 12px;
+    border-radius: 999px;
+    font-weight: 600;
+}
+
+QLabel#status_chip_idle {
+    background: #e2e8f0;
+    color: #334155;
+}
+
+QLabel#status_chip_live {
+    background: #dcfce7;
+    color: #166534;
+}
+
+QPushButton,
+QComboBox,
+QTextEdit,
+QListWidget,
+QTableWidget {
+    background-color: white;
+    border: 1px solid #dbe3ea;
+    border-radius: 10px;
+}
+
 QPushButton {
-    background-color: #ffffff;
-    border: 1px solid #dcdde1;
-    border-radius: 6px;
-    padding: 6px 12px;
+    padding: 8px 14px;
 }
 
 QPushButton:hover {
-    background-color: #eaf0ff;
-    border: 1px solid #4c8bf5;
+    background-color: #eff6ff;
+    border-color: #93c5fd;
 }
 
-QPushButton:pressed {
-    background-color: #d6e4ff;
+QPushButton#primary_btn {
+    background-color: #2563eb;
+    color: white;
+    border: none;
+    font-weight: 600;
 }
 
-/* === КОМБОБОКС (выбор интерфейса) === */
+QPushButton#primary_btn:hover {
+    background-color: #1d4ed8;
+}
+
+QPushButton#stop_mode {
+    background-color: #dc2626;
+    color: white;
+    border: none;
+    font-weight: 600;
+}
+
+QPushButton#stop_mode:hover {
+    background-color: #b91c1c;
+}
+
 QComboBox {
-    background-color: #ffffff;
-    border: 1px solid #dcdde1;
-    border-radius: 6px;
-    padding: 5px;
+    padding: 7px 10px;
 }
 
-QComboBox:hover {
-    border: 1px solid #4c8bf5;
+QTextEdit,
+QListWidget,
+QTableWidget {
+    padding: 6px;
 }
 
-/* === ТЕКСТОВОЕ ПОЛЕ ЛОГА === */
-QTextEdit {
-    background-color: #ffffff;
-    border: 1px solid #dcdde1;
-    border-radius: 6px;
+QTableWidget {
+    gridline-color: #e5e7eb;
+    selection-background-color: #dbeafe;
+}
+
+QHeaderView::section {
+    background-color: #f8fafc;
+    color: #334155;
     padding: 8px;
-    color: #2c2c2c;
+    border: none;
+    border-bottom: 1px solid #e5e7eb;
+    font-weight: 600;
 }
 
-/* === СПИСОК === */
-QListWidget {
-    background-color: #ffffff;
-    border: 1px solid #dcdde1;
-    border-radius: 6px;
-}
-
-/* === САЙДБАР === */
-QFrame#sidebar {
-    background-color: #ffffff;
-    border-right: 1px solid #dcdde1;
-}
-
-/* === ЛЕЙБЛЫ === */
-QLabel {
-    color: #2c2c2c;
-}
-
-/* === СКРОЛЛ === */
 QScrollBar:vertical {
-    background: #f1f2f6;
+    background: #f1f5f9;
     width: 10px;
-}
-
-QScrollBar::handle:vertical {
-    background: #c7d0e0;
     border-radius: 5px;
 }
 
-QScrollBar::handle:vertical:hover {
-    background: #aab4c8;
+QScrollBar::handle:vertical {
+    background: #cbd5e1;
+    border-radius: 5px;
+}
+QFrame#top_card,
+QFrame#metric_card,
+QFrame#section_card,
+QFrame#summary_card {
+    background: #f8fafc;
+    border: 1px solid #d7dee8;
+    border-radius: 14px;
+}
+QLabel#page_title {
+    font-size: 18px;
+    font-weight: 700;
+    color: #0f172a;
+    padding: 0;
 }
 
-/* === АКЦЕНТ (кнопки действий) === */
-QPushButton#primary {
-    background-color: #4c8bf5;
+QLabel#page_subtitle {
+    font-size: 11px;
+    color: #64748b;
+    padding: 0;
+}
+
+QLabel#status_chip {
+    background: #dcfce7;
+    color: #166534;
+    border: 1px solid #bbf7d0;
+    border-radius: 10px;
+    padding: 6px 10px;
+    font-size: 13px;
+    font-weight: 600;
+}
+
+QLabel#metric_title {
+    font-size: 12px;
+    color: #64748b;
+    padding: 0;
+}
+
+QLabel#metric_value {
+    font-size: 22px;
+    font-weight: 700;
+    color: #0f172a;
+    padding: 0;
+}
+
+QLabel#metric_subtitle {
+    font-size: 12px;
+    color: #64748b;
+    padding: 0;
+}
+
+QLabel#section_title {
+    font-size: 14px;
+    font-weight: 700;
+    color: #0f172a;
+    padding: 0;
+}
+
+QLabel#summary_label {
+    font-size: 13px;
+    color: #334155;
+    padding: 0;
+}
+
+QPushButton {
+    min-height: 36px;
+    padding: 0 12px;
+    border-radius: 10px;
+}
+
+QPushButton#primary_btn {
+    background: #2563eb;
     color: white;
-    border: none;
+    font-weight: 600;
+    padding: 0 16px;
 }
 
-QPushButton#primary:hover {
-    background-color: #3a6fd8;
+QPushButton#stop_mode {
+    background: #ef4444;
+    color: white;
+    font-weight: 600;
+    padding: 0 16px;
+}
+
+QComboBox {
+    min-height: 36px;
+    padding: 0 10px;
+    border-radius: 10px;
+    background: white;
+    border: 1px solid #cbd5e1;
+}
+
+QTextEdit,
+QListWidget {
+    background: white;
+    border: 1px solid #d7dee8;
+    border-radius: 10px;
+    padding: 4px;
+}
+
+QCheckBox {
+    spacing: 6px;
+    padding: 0;
 }
