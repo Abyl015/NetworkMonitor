@@ -116,20 +116,26 @@ class MainWindow(QMainWindow):
         self.sidebar = sidebar
 
         nav_layout = QVBoxLayout(sidebar)
-        nav_layout.setContentsMargins(16, 18, 16, 18)
+        nav_layout.setContentsMargins(14, 14, 14, 14)
         nav_layout.setSpacing(8)
         self.nav_layout = nav_layout
 
         self.sidebar_toggle_btn = QPushButton("☰")
         self.sidebar_toggle_btn.setObjectName("sidebar_toggle_btn")
+        self.sidebar_toggle_btn.setText("<<")
         self.sidebar_toggle_btn.setToolTip("Toggle sidebar")
         self.sidebar_toggle_btn.clicked.connect(self.toggle_sidebar)
         nav_layout.addWidget(self.sidebar_toggle_btn)
 
-        nav_title = QLabel("NETGUARD")
+        nav_title = QLabel("AI Network Guardian")
         nav_title.setObjectName("nav_title")
         self.nav_title = nav_title
         nav_layout.addWidget(nav_title)
+
+        nav_subtitle = QLabel("v2.0")
+        nav_subtitle.setObjectName("nav_subtitle")
+        self.nav_subtitle = nav_subtitle
+        nav_layout.addWidget(nav_subtitle)
 
         self.main_nav_btn = QPushButton("Dashboard")
         self.main_nav_btn.setCheckable(True)
@@ -201,10 +207,17 @@ class MainWindow(QMainWindow):
         return card, value_lbl, subtitle_lbl
 
     def _build_main_page(self) -> QWidget:
+        scroll = QScrollArea()
+        scroll.setObjectName("dashboard_scroll")
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+
         page = QWidget()
+        scroll.setWidget(page)
         page_layout = QVBoxLayout(page)
         page_layout.setContentsMargins(18, 18, 18, 18)
-        page_layout.setSpacing(12)
+        page_layout.setSpacing(14)
 
         # ---------- TOP BAR ----------
         top_card = QFrame()
@@ -237,6 +250,17 @@ class MainWindow(QMainWindow):
         self.iface_combo.setMinimumWidth(170)
         self.iface_combo.setMaximumWidth(260)
 
+        iface_box = QVBoxLayout()
+        iface_box.setContentsMargins(0, 0, 0, 0)
+        iface_box.setSpacing(2)
+        iface_label = QLabel("РРЅС‚РµСЂС„РµР№СЃ:")
+        iface_label.setObjectName("control_label")
+        iface_box.addWidget(iface_label)
+        iface_box.addWidget(self.iface_combo)
+
+        iface_wrap = QWidget()
+        iface_wrap.setLayout(iface_box)
+
         self.refresh_ifaces_btn = QPushButton("Refresh")
         self.refresh_ifaces_btn.clicked.connect(self.load_interfaces_to_combo)
 
@@ -252,7 +276,7 @@ class MainWindow(QMainWindow):
 
         top_grid.addWidget(title_wrap, 0, 0, 1, 2)
         top_grid.addWidget(self.status_label, 0, 2)
-        top_grid.addWidget(self.iface_combo, 0, 3)
+        top_grid.addWidget(iface_wrap, 0, 3)
         top_grid.addWidget(self.refresh_ifaces_btn, 0, 4)
         top_grid.addWidget(self.settings_btn, 0, 5)
         top_grid.addWidget(self.export_btn, 0, 6)
@@ -295,24 +319,28 @@ class MainWindow(QMainWindow):
 
         page_layout.addLayout(cards_row, 0)
 
-        # ---------- SUMMARY ----------
+        # ---------- SECURITY ASSESSMENT ----------
+        assessment_title = QLabel("SECURITY ASSESSMENT")
+        assessment_title.setObjectName("dashboard_section_title")
+        page_layout.addWidget(assessment_title, 0)
+
         summary_card = QFrame()
-        summary_card.setObjectName("summary_card")
+        summary_card.setObjectName("dashboard_assessment_section")
         summary_card.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Maximum)
         summary_layout = QVBoxLayout(summary_card)
         summary_layout.setContentsMargins(16, 14, 16, 14)
         summary_layout.setSpacing(10)
 
-        assessment_grid = QGridLayout()
-        assessment_grid.setHorizontalSpacing(10)
-        assessment_grid.setVerticalSpacing(10)
+        assessment_body = QHBoxLayout()
+        assessment_body.setContentsMargins(0, 0, 0, 0)
+        assessment_body.setSpacing(12)
 
         score_panel = QFrame()
-        score_panel.setObjectName("assessment_score_panel")
+        score_panel.setObjectName("assessment_score_card")
         score_panel.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         score_layout = QVBoxLayout(score_panel)
-        score_layout.setContentsMargins(14, 12, 14, 12)
-        score_layout.setSpacing(4)
+        score_layout.setContentsMargins(26, 22, 26, 22)
+        score_layout.setSpacing(6)
 
         score_title = QLabel("IB Score")
         score_title.setObjectName("assessment_fact_label")
@@ -325,11 +353,18 @@ class MainWindow(QMainWindow):
         self.assessment_score_level.setWordWrap(True)
         self.assessment_score_level.setObjectName("assessment_score_level")
         self.assessment_score_level.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        score_panel.setMinimumHeight(104)
+        score_panel.setMinimumHeight(230)
+        score_layout.addStretch(1)
         score_layout.addWidget(score_title)
         score_layout.addWidget(self.assessment_score_value)
         score_layout.addWidget(self.assessment_score_level)
-        assessment_grid.addWidget(score_panel, 0, 0)
+        score_layout.addStretch(1)
+        assessment_body.addWidget(score_panel, 33)
+
+        assessment_right = QWidget()
+        assessment_right_layout = QVBoxLayout(assessment_right)
+        assessment_right_layout.setContentsMargins(0, 0, 0, 0)
+        assessment_right_layout.setSpacing(10)
 
         self.assessment_threat_value = QLabel("N/A")
         self.assessment_incident_value = QLabel("N/A")
@@ -339,13 +374,16 @@ class MainWindow(QMainWindow):
             ("Инцидент", self.assessment_incident_value),
             ("Достоверность", self.assessment_confidence_value),
         ]
-        for col, (label_text, value_label) in enumerate(fact_items, start=1):
+        facts_row = QHBoxLayout()
+        facts_row.setContentsMargins(0, 0, 0, 0)
+        facts_row.setSpacing(10)
+        for label_text, value_label in fact_items:
             fact_card = QFrame()
-            fact_card.setObjectName("assessment_fact_card")
+            fact_card.setObjectName("assessment_metric_card")
             fact_card.setMinimumHeight(82)
             fact_card.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
             fact_layout = QVBoxLayout(fact_card)
-            fact_layout.setContentsMargins(12, 10, 12, 10)
+            fact_layout.setContentsMargins(14, 10, 14, 10)
             fact_layout.setSpacing(4)
             label = QLabel(label_text)
             label.setObjectName("assessment_fact_label")
@@ -353,25 +391,28 @@ class MainWindow(QMainWindow):
             value_label.setWordWrap(True)
             fact_layout.addWidget(label)
             fact_layout.addWidget(value_label)
-            assessment_grid.addWidget(fact_card, 0, col)
-        assessment_grid.setColumnStretch(0, 2)
-        assessment_grid.setColumnStretch(1, 1)
-        assessment_grid.setColumnStretch(2, 1)
-        assessment_grid.setColumnStretch(3, 1)
-        summary_layout.addLayout(assessment_grid)
+            facts_row.addWidget(fact_card, 1)
+        assessment_right_layout.addLayout(facts_row, 0)
 
+        summary_text_card = QFrame()
+        summary_text_card.setObjectName("assessment_summary_card")
+        summary_text_card.setMinimumHeight(54)
+        summary_text_layout = QVBoxLayout(summary_text_card)
+        summary_text_layout.setContentsMargins(12, 10, 12, 10)
         self.summary_label = QLabel("Вывод: недостаточно данных для достоверной оценки")
         self.summary_label.setWordWrap(True)
         self.summary_label.setObjectName("summary_label")
         self.summary_label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Maximum)
-        summary_layout.addWidget(self.summary_label)
+        summary_text_layout.addWidget(self.summary_label)
+        assessment_right_layout.addWidget(summary_text_card, 0)
 
         analysis_layout = QHBoxLayout()
+        analysis_layout.setContentsMargins(0, 0, 0, 0)
         analysis_layout.setSpacing(10)
 
         risk_panel = QFrame()
-        risk_panel.setObjectName("assessment_subpanel")
-        risk_panel.setMinimumHeight(136)
+        risk_panel.setObjectName("assessment_detail_card")
+        risk_panel.setMinimumHeight(118)
         risk_panel.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         risk_layout = QVBoxLayout(risk_panel)
         risk_layout.setContentsMargins(12, 10, 12, 10)
@@ -380,7 +421,7 @@ class MainWindow(QMainWindow):
         risk_title.setObjectName("assessment_subtitle")
         risk_layout.addWidget(risk_title)
         self.risk_labels: list[QLabel] = []
-        for _ in range(4):
+        for _ in range(5):
             lbl = QLabel("N/A")
             lbl.setWordWrap(True)
             lbl.setObjectName("risk_row")
@@ -389,8 +430,8 @@ class MainWindow(QMainWindow):
         analysis_layout.addWidget(risk_panel, 1)
 
         findings_panel = QFrame()
-        findings_panel.setObjectName("assessment_subpanel")
-        findings_panel.setMinimumHeight(136)
+        findings_panel.setObjectName("assessment_detail_card")
+        findings_panel.setMinimumHeight(118)
         findings_panel.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         findings_layout = QVBoxLayout(findings_panel)
         findings_layout.setContentsMargins(12, 10, 12, 10)
@@ -406,7 +447,9 @@ class MainWindow(QMainWindow):
             self.finding_labels.append(lbl)
             findings_layout.addWidget(lbl)
         analysis_layout.addWidget(findings_panel, 1)
-        summary_layout.addLayout(analysis_layout)
+        assessment_right_layout.addLayout(analysis_layout, 1)
+        assessment_body.addWidget(assessment_right, 67)
+        summary_layout.addLayout(assessment_body)
 
         compare_card = QFrame()
         compare_card.setObjectName("comparison_card")
@@ -417,18 +460,19 @@ class MainWindow(QMainWindow):
         self.assessment_compare_label.setWordWrap(True)
         self.assessment_compare_label.setObjectName("comparison_text")
         compare_layout.addWidget(self.assessment_compare_label)
-        summary_layout.addWidget(compare_card)
+        summary_layout.addWidget(compare_card, 0)
 
         page_layout.addWidget(summary_card, 0)
 
-        # ---------- CENTER ----------
-        center_layout = QHBoxLayout()
-        center_layout.setSpacing(12)
+        operational_title = QLabel("OPERATIONAL MONITORING")
+        operational_title.setObjectName("dashboard_section_title")
+        page_layout.addWidget(operational_title, 0)
 
-        left_widget = QWidget()
-        left_layout = QVBoxLayout(left_widget)
-        left_layout.setContentsMargins(0, 0, 0, 0)
-        left_layout.setSpacing(10)
+        # ---------- CENTER ----------
+        center_layout = QGridLayout()
+        center_layout.setContentsMargins(0, 0, 0, 0)
+        center_layout.setHorizontalSpacing(12)
+        center_layout.setVerticalSpacing(12)
 
         events_card = QFrame()
         events_card.setObjectName("section_card")
@@ -443,8 +487,6 @@ class MainWindow(QMainWindow):
         self.events_list = QListWidget()
         self.events_list.setMinimumHeight(120)
         events_layout.addWidget(self.events_list)
-
-        left_layout.addWidget(events_card, 2)
 
         log_card = QFrame()
         log_card.setObjectName("section_card")
@@ -473,17 +515,11 @@ class MainWindow(QMainWindow):
 
         self.log_buffer = []
         self.log_area = QTextEdit()
+        self.log_area.setObjectName("log_panel")
         self.log_area.setReadOnly(True)
         self.log_area.document().setMaximumBlockCount(self.max_log_messages)
-        self.log_area.setMinimumHeight(180)
+        self.log_area.setMinimumHeight(220)
         log_layout.addWidget(self.log_area)
-
-        left_layout.addWidget(log_card, 3)
-
-        right_widget = QWidget()
-        right_layout = QVBoxLayout(right_widget)
-        right_layout.setContentsMargins(0, 0, 0, 0)
-        right_layout.setSpacing(10)
 
         threats_card = QFrame()
         threats_card.setObjectName("section_card")
@@ -499,8 +535,6 @@ class MainWindow(QMainWindow):
         self.stats_list.setMinimumHeight(110)
         threats_layout.addWidget(self.stats_list)
 
-        right_layout.addWidget(threats_card, 1)
-
         graph_card = QFrame()
         graph_card.setObjectName("section_card")
         graph_layout = QVBoxLayout(graph_card)
@@ -508,16 +542,20 @@ class MainWindow(QMainWindow):
         graph_layout.setSpacing(8)
 
         self.plot = PlotWidget("Метрики в реальном времени")
-        self.plot.setMinimumHeight(240)
+        self.plot.setMinimumHeight(220)
         graph_layout.addWidget(self.plot)
 
-        right_layout.addWidget(graph_card, 3)
-
-        center_layout.addWidget(left_widget, 3)
-        center_layout.addWidget(right_widget, 2)
+        center_layout.addWidget(events_card, 0, 0)
+        center_layout.addWidget(threats_card, 0, 1)
+        center_layout.addWidget(log_card, 1, 0)
+        center_layout.addWidget(graph_card, 1, 1)
+        center_layout.setColumnStretch(0, 3)
+        center_layout.setColumnStretch(1, 2)
+        center_layout.setRowStretch(0, 1)
+        center_layout.setRowStretch(1, 2)
 
         page_layout.addLayout(center_layout, 1)
-        return page
+        return scroll
 
     def _build_pcap_page(self) -> QWidget:
         page = QWidget()
@@ -770,7 +808,9 @@ class MainWindow(QMainWindow):
         width = self.sidebar_collapsed_width if collapsed else self.sidebar_expanded_width
         self.sidebar.setFixedWidth(width)
         self.nav_title.setVisible(not collapsed)
-        self.nav_layout.setContentsMargins(8 if collapsed else 16, 18, 8 if collapsed else 16, 18)
+        self.nav_subtitle.setVisible(not collapsed)
+        self.sidebar_toggle_btn.setText(">>" if collapsed else "<<")
+        self.nav_layout.setContentsMargins(8 if collapsed else 14, 14, 8 if collapsed else 14, 14)
 
         for btn, expanded_text, collapsed_text, tooltip in self._nav_button_specs():
             btn.setText(collapsed_text if collapsed else expanded_text)
@@ -1481,16 +1521,26 @@ Report path:
     def _make_metric_card(self, title: str, value_label: QLabel, subtitle_label: QLabel) -> QFrame:
         card = QFrame()
         card.setObjectName("metric_card_primary" if title == "IB Score" else "metric_card")
+        card.setMinimumHeight(76)
 
         layout = QVBoxLayout(card)
-        layout.setContentsMargins(18, 16, 18, 16)
-        layout.setSpacing(6)
+        layout.setContentsMargins(12, 10, 12, 10)
+        layout.setSpacing(4)
 
         title_label = QLabel(title)
         title_label.setObjectName("metric_title")
+        title_label.setWordWrap(True)
 
-        layout.addWidget(title_label)
-        layout.addWidget(value_label)
+        value_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        subtitle_label.setWordWrap(True)
+
+        header = QHBoxLayout()
+        header.setContentsMargins(0, 0, 0, 0)
+        header.setSpacing(8)
+        header.addWidget(title_label, 1)
+        header.addWidget(value_label, 0)
+
+        layout.addLayout(header)
         layout.addWidget(subtitle_label)
 
         return card

@@ -1,19 +1,25 @@
 QMainWindow,
 QStackedWidget {
-    background-color: #f4f7fb;
+    background-color: #f5f7fb;
     color: #1f2937;
     font-family: "Segoe UI", Arial;
     font-size: 13px;
 }
 
+QScrollArea#dashboard_scroll,
+QScrollArea#dashboard_scroll QWidget#qt_scrollarea_viewport {
+    background-color: #f5f7fb;
+    border: none;
+}
+
 QWidget#sidebar {
-    background-color: #0f172a;
+    background-color: #111827;
     border-right: 1px solid #1e293b;
 }
 
 QLabel#nav_title {
     color: #f8fafc;
-    font-size: 20px;
+    font-size: 13px;
     font-weight: 700;
     background-color: transparent;
 }
@@ -26,11 +32,11 @@ QLabel#nav_subtitle {
 
 QPushButton#nav_btn,
 QPushButton#nav_btn_active {
-    text-align: center;
-    padding: 8px 6px;
+    text-align: left;
+    padding: 9px 11px;
     border-radius: 8px;
     border: 1px solid transparent;
-    min-height: 34px;
+    min-height: 32px;
     font-weight: 600;
 }
 
@@ -51,13 +57,15 @@ QPushButton#nav_btn_active {
 }
 
 QPushButton#sidebar_toggle_btn {
-    background-color: #162036;
-    color: #f8fafc;
-    border: 1px solid #24324c;
-    border-radius: 8px;
-    min-height: 34px;
+    background-color: transparent;
+    color: #94a3b8;
+    border: 1px solid transparent;
+    border-radius: 6px;
+    min-height: 28px;
+    max-height: 28px;
+    max-width: 34px;
     padding: 0;
-    font-size: 16px;
+    font-size: 12px;
     font-weight: 700;
 }
 
@@ -73,19 +81,33 @@ QFrame#metric_card,
 QFrame#metric_card_primary,
 QFrame#summary_card,
 QFrame#summary_banner,
+QFrame#dashboard_assessment_section,
 QFrame#section_card,
 QFrame#assessment_score,
 QFrame#assessment_badge,
+QFrame#assessment_score_card,
 QFrame#assessment_score_panel,
 QFrame#assessment_facts_panel,
 QFrame#assessment_fact_card,
+QFrame#assessment_metric_card,
+QFrame#assessment_summary_card,
+QFrame#assessment_detail_card,
 QFrame#assessment_subpanel,
 QFrame#comparison_card {
     background-color: #ffffff;
-    border: 1px solid #dbe3ea;
-    border-radius: 8px;
+    border: 1px solid #e5e7eb;
+    border-radius: 10px;
 }
 
+QFrame#dashboard_assessment_section {
+    border: 1px solid #d1d5db;
+}
+
+QFrame#top_card {
+    border-radius: 0;
+}
+
+QFrame#assessment_score_card,
 QFrame#assessment_score_panel,
 QFrame#assessment_score,
 QFrame#metric_card_primary {
@@ -93,10 +115,13 @@ QFrame#metric_card_primary {
     background-color: #eff6ff;
 }
 
+QFrame#assessment_metric_card,
+QFrame#assessment_summary_card,
+QFrame#assessment_detail_card,
 QFrame#assessment_fact_card,
 QFrame#assessment_subpanel,
 QFrame#comparison_card {
-    background-color: #ffffff;
+    background-color: #fbfdff;
     border: 1px solid #e2e8f0;
 }
 
@@ -111,7 +136,7 @@ QLabel {
 }
 
 QLabel#page_title {
-    font-size: 20px;
+    font-size: 23px;
     font-weight: 700;
     color: #0f172a;
     padding: 0;
@@ -130,6 +155,20 @@ QLabel#section_title {
     padding: 0;
 }
 
+QLabel#dashboard_section_title {
+    font-size: 14px;
+    font-weight: 700;
+    color: #020617;
+    padding: 0 0 0 1px;
+}
+
+QLabel#control_label {
+    color: #111827;
+    font-size: 12px;
+    font-weight: 700;
+    padding: 0;
+}
+
 QLabel#card_title,
 QLabel#metric_title,
 QLabel#assessment_fact_label,
@@ -143,14 +182,14 @@ QLabel#assessment_subtitle {
 QLabel#card_value,
 QLabel#metric_value {
     color: #0f172a;
-    font-size: 26px;
+    font-size: 24px;
     font-weight: 700;
     padding: 0;
 }
 
 QLabel#assessment_score_value {
-    color: #1d4ed8;
-    font-size: 30px;
+    color: #111827;
+    font-size: 54px;
     font-weight: 800;
     padding: 0;
 }
@@ -170,7 +209,7 @@ QLabel#finding_item {
 
 QLabel#assessment_fact_value {
     color: #0f172a;
-    font-size: 14px;
+    font-size: 18px;
     font-weight: 700;
 }
 
@@ -207,9 +246,9 @@ QPushButton {
     background-color: #ffffff;
     color: #1f2937;
     border: 1px solid #cbd5e1;
-    border-radius: 8px;
-    min-height: 36px;
-    padding: 0 14px;
+    border-radius: 6px;
+    min-height: 32px;
+    padding: 0 12px;
 }
 
 QPushButton:hover {
@@ -255,8 +294,8 @@ QDateTimeEdit {
     background-color: #ffffff;
     color: #1f2937;
     border: 1px solid #cbd5e1;
-    border-radius: 8px;
-    min-height: 34px;
+    border-radius: 6px;
+    min-height: 32px;
     padding: 0 10px;
 }
 
@@ -269,17 +308,29 @@ QDateTimeEdit:disabled {
 }
 
 QTextEdit,
+QPlainTextEdit,
 QListWidget,
 QTableWidget {
     background-color: #ffffff;
     color: #1f2937;
     border: 1px solid #dbe3ea;
-    border-radius: 8px;
+    border-radius: 6px;
     padding: 6px;
 }
 
+QTextEdit#log_panel,
+QPlainTextEdit#log_panel {
+    background-color: #0f172a;
+    color: #d1d5db;
+    border: 1px solid #1e293b;
+    border-radius: 8px;
+    font-family: "Consolas", "Courier New", monospace;
+    font-size: 12px;
+    padding: 8px;
+}
+
 QListWidget::item {
-    padding: 6px;
+    padding: 6px 4px;
 }
 
 QListWidget::item:selected {
