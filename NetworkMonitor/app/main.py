@@ -1,18 +1,21 @@
 from __future__ import annotations
 
 import html
+import json
 import os
 import re
 import sys
+import time
 import webbrowser
 from collections import Counter
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
-from PyQt6.QtCore import Qt, QTimer
+from PyQt6.QtCore import QDateTime, Qt, QTimer
 from PyQt6.QtGui import QColor
 from PyQt6.QtWidgets import (
     QApplication,
+    QAbstractItemView,
     QMainWindow,
     QTextEdit,
     QVBoxLayout,
@@ -26,10 +29,13 @@ from PyQt6.QtWidgets import (
     QGridLayout,
     QStackedWidget,
     QComboBox,
+    QCheckBox,
+    QDateTimeEdit,
+    QLineEdit,
     QListWidget,
     QScrollArea,
     QSplitter,
-    QSizePolicy, QListWidgetItem, QTableWidgetItem,
+    QSizePolicy, QListWidgetItem, QTableWidget, QTableWidgetItem,
 )
 
 from NetworkMonitor.app.plot_widget import PlotWidget
@@ -37,9 +43,13 @@ from NetworkMonitor.app.settings_dialog import SettingsDialog
 from NetworkMonitor.app.worker import CaptureWorker
 from NetworkMonitor.config.profile_manager import ProfileManager
 from NetworkMonitor.core.engine import NetworkEngine
-from NetworkMonitor.core.report_builder import build_html_report
+from NetworkMonitor.core.report_builder import build_html_report, build_html_report_for_session
 from NetworkMonitor.storage.database import (
     get_last_session_id,
+    get_alert_types,
+    get_previous_session_record,
+    get_session_record,
+    query_alerts,
     get_session_by_id,
     get_sessions,
     init_db,
@@ -69,6 +79,9 @@ class MainWindow(QMainWindow):
         self.log_history: list[str] = []
         self.threat_counter: Counter[str] = Counter()
         self.max_event_rows = 120
+        self.max_log_messages = 500
+        self._live_ui_dirty = False
+        self._last_live_ui_flush = 0.0
 
         init_db()
         self._build_ui()
@@ -81,6 +94,11 @@ class MainWindow(QMainWindow):
         self.timer.setInterval(1000)
         self.timer.timeout.connect(self.refresh_graphs)
         self.timer.start()
+
+        self.live_ui_timer = QTimer(self)
+        self.live_ui_timer.setInterval(500)
+        self.live_ui_timer.timeout.connect(self.flush_live_ui_updates)
+        self.live_ui_timer.start()
 
     def _build_ui(self) -> None:
         root = QWidget()
@@ -96,7 +114,7 @@ class MainWindow(QMainWindow):
         nav_layout.setContentsMargins(14, 16, 14, 16)
         nav_layout.setSpacing(10)
 
-        nav_title = QLabel("SENTINEL")
+        nav_title = QLabel("NETGUARD")
         nav_title.setObjectName("nav_title")
         nav_layout.addWidget(nav_title)
 
@@ -120,6 +138,11 @@ class MainWindow(QMainWindow):
         self.sessions_nav_btn.clicked.connect(lambda: self.switch_page(3))
         nav_layout.addWidget(self.sessions_nav_btn)
 
+        self.alerts_nav_btn = QPushButton("Alerts")
+        self.alerts_nav_btn.setCheckable(True)
+        self.alerts_nav_btn.clicked.connect(lambda: self.switch_page(4))
+        nav_layout.addWidget(self.alerts_nav_btn)
+
         nav_layout.addStretch(1)
 
         self.pages = QStackedWidget()
@@ -131,6 +154,9 @@ class MainWindow(QMainWindow):
         self.sessions_page = QWidget()
         self._build_sessions_page()
         self.pages.addWidget(self.sessions_page)
+
+        self.alerts_page = self._build_alerts_page()
+        self.pages.addWidget(self.alerts_page)
 
         root_layout.addWidget(sidebar)
         root_layout.addWidget(self.pages)
@@ -259,12 +285,108 @@ class MainWindow(QMainWindow):
         summary_card = QFrame()
         summary_card.setObjectName("summary_card")
         summary_layout = QVBoxLayout(summary_card)
-        summary_layout.setContentsMargins(14, 10, 14, 10)
+        summary_layout.setContentsMargins(14, 12, 14, 12)
+        summary_layout.setSpacing(10)
+
+        assessment_top = QHBoxLayout()
+        assessment_top.setSpacing(10)
+
+        score_panel = QFrame()
+        score_panel.setObjectName("assessment_score_panel")
+        score_layout = QVBoxLayout(score_panel)
+        score_layout.setContentsMargins(14, 12, 14, 12)
+        score_layout.setSpacing(4)
+
+        score_title = QLabel("IB Score")
+        score_title.setObjectName("assessment_fact_label")
+        self.assessment_score_value = QLabel("N/A")
+        self.assessment_score_value.setObjectName("assessment_score_value")
+        self.assessment_score_level = QLabel("Недостаточно данных")
+        self.assessment_score_level.setWordWrap(True)
+        self.assessment_score_level.setObjectName("assessment_score_level")
+        score_layout.addWidget(score_title)
+        score_layout.addWidget(self.assessment_score_value)
+        score_layout.addWidget(self.assessment_score_level)
+        assessment_top.addWidget(score_panel, 2)
+
+        facts_panel = QFrame()
+        facts_panel.setObjectName("assessment_facts_panel")
+        facts_grid = QGridLayout(facts_panel)
+        facts_grid.setContentsMargins(14, 12, 14, 12)
+        facts_grid.setHorizontalSpacing(16)
+        facts_grid.setVerticalSpacing(8)
+
+        self.assessment_threat_value = QLabel("N/A")
+        self.assessment_incident_value = QLabel("N/A")
+        self.assessment_confidence_value = QLabel("N/A")
+        fact_items = [
+            ("Угроза", self.assessment_threat_value),
+            ("Инцидент", self.assessment_incident_value),
+            ("Достоверность", self.assessment_confidence_value),
+        ]
+        for row, (label_text, value_label) in enumerate(fact_items):
+            label = QLabel(label_text)
+            label.setObjectName("assessment_fact_label")
+            value_label.setObjectName("assessment_fact_value")
+            value_label.setWordWrap(True)
+            facts_grid.addWidget(label, row, 0)
+            facts_grid.addWidget(value_label, row, 1)
+        facts_grid.setColumnStretch(1, 1)
+        assessment_top.addWidget(facts_panel, 3)
+        summary_layout.addLayout(assessment_top)
 
         self.summary_label = QLabel("Вывод: недостаточно данных для достоверной оценки")
         self.summary_label.setWordWrap(True)
         self.summary_label.setObjectName("summary_label")
         summary_layout.addWidget(self.summary_label)
+
+        analysis_layout = QHBoxLayout()
+        analysis_layout.setSpacing(10)
+
+        risk_panel = QFrame()
+        risk_panel.setObjectName("assessment_subpanel")
+        risk_layout = QVBoxLayout(risk_panel)
+        risk_layout.setContentsMargins(12, 10, 12, 10)
+        risk_layout.setSpacing(5)
+        risk_title = QLabel("Risk breakdown")
+        risk_title.setObjectName("assessment_subtitle")
+        risk_layout.addWidget(risk_title)
+        self.risk_labels: list[QLabel] = []
+        for _ in range(4):
+            lbl = QLabel("N/A")
+            lbl.setWordWrap(True)
+            lbl.setObjectName("risk_row")
+            self.risk_labels.append(lbl)
+            risk_layout.addWidget(lbl)
+        analysis_layout.addWidget(risk_panel, 1)
+
+        findings_panel = QFrame()
+        findings_panel.setObjectName("assessment_subpanel")
+        findings_layout = QVBoxLayout(findings_panel)
+        findings_layout.setContentsMargins(12, 10, 12, 10)
+        findings_layout.setSpacing(5)
+        findings_title = QLabel("Key findings")
+        findings_title.setObjectName("assessment_subtitle")
+        findings_layout.addWidget(findings_title)
+        self.finding_labels: list[QLabel] = []
+        for _ in range(4):
+            lbl = QLabel("N/A")
+            lbl.setWordWrap(True)
+            lbl.setObjectName("finding_item")
+            self.finding_labels.append(lbl)
+            findings_layout.addWidget(lbl)
+        analysis_layout.addWidget(findings_panel, 1)
+        summary_layout.addLayout(analysis_layout)
+
+        compare_card = QFrame()
+        compare_card.setObjectName("comparison_card")
+        compare_layout = QVBoxLayout(compare_card)
+        compare_layout.setContentsMargins(12, 8, 12, 8)
+        self.assessment_compare_label = QLabel("Нет данных для сравнения")
+        self.assessment_compare_label.setWordWrap(True)
+        self.assessment_compare_label.setObjectName("comparison_text")
+        compare_layout.addWidget(self.assessment_compare_label)
+        summary_layout.addWidget(compare_card)
 
         page_layout.addWidget(summary_card, 0)
 
@@ -315,6 +437,7 @@ class MainWindow(QMainWindow):
         self.log_buffer = []
         self.log_area = QTextEdit()
         self.log_area.setReadOnly(True)
+        self.log_area.document().setMaximumBlockCount(self.max_log_messages)
         self.log_area.setMinimumHeight(120)
         self.log_area.setMaximumHeight(150)
         log_layout.addWidget(self.log_area)
@@ -397,6 +520,7 @@ class MainWindow(QMainWindow):
         body.addWidget(self.pcap_stats_list, 1)
         self.pcap_log_area = QTextEdit()
         self.pcap_log_area.setReadOnly(True)
+        self.pcap_log_area.document().setMaximumBlockCount(self.max_log_messages)
         body.addWidget(self.pcap_log_area, 2)
         layout.addLayout(body, 1)
         return page
@@ -477,13 +601,116 @@ class MainWindow(QMainWindow):
         self.session_details.setReadOnly(True)
         right_layout.addWidget(self.session_details)
 
-        self.open_report_btn = QPushButton("Открыть HTML-отчёт")
+        self.open_report_btn = QPushButton("Открыть / сгенерировать HTML-отчет")
         self.open_report_btn.clicked.connect(self.open_selected_session_report)
         right_layout.addWidget(self.open_report_btn)
 
         layout.addWidget(left_card, 1)
         layout.addWidget(right_card, 2)
         self.load_sessions()
+
+    def _build_alerts_page(self) -> QWidget:
+        page = QWidget()
+        layout = QVBoxLayout(page)
+        layout.setContentsMargins(18, 18, 18, 18)
+        layout.setSpacing(12)
+
+        title = QLabel("Alerts history")
+        title.setObjectName("page_title")
+        layout.addWidget(title)
+
+        filters_card = QFrame()
+        filters_card.setObjectName("panel_card")
+        filters = QGridLayout(filters_card)
+        filters.setContentsMargins(14, 14, 14, 14)
+        filters.setHorizontalSpacing(10)
+        filters.setVerticalSpacing(8)
+
+        self.alert_session_filter = QComboBox()
+        self.alert_type_filter = QComboBox()
+        self.alert_verdict_filter = QComboBox()
+        self.alert_search_input = QLineEdit()
+        self.alert_search_input.setPlaceholderText("IP, текст причины или описание")
+
+        self.alert_period_checkbox = QCheckBox("Период")
+        self.alert_from_dt = QDateTimeEdit()
+        self.alert_from_dt.setCalendarPopup(True)
+        self.alert_to_dt = QDateTimeEdit()
+        self.alert_to_dt.setCalendarPopup(True)
+
+        now = datetime.now()
+        self.alert_from_dt.setDateTime(QDateTime(now - timedelta(days=7)))
+        self.alert_to_dt.setDateTime(QDateTime(now))
+        self.alert_from_dt.setEnabled(False)
+        self.alert_to_dt.setEnabled(False)
+        self.alert_period_checkbox.stateChanged.connect(self._toggle_alert_period_filters)
+
+        self.alert_refresh_btn = QPushButton("Обновить")
+        self.alert_refresh_btn.clicked.connect(self.load_alerts_history)
+        self.alert_reset_btn = QPushButton("Сбросить")
+        self.alert_reset_btn.clicked.connect(self.reset_alert_filters)
+
+        filters.addWidget(QLabel("Session"), 0, 0)
+        filters.addWidget(self.alert_session_filter, 0, 1)
+        filters.addWidget(QLabel("Type"), 0, 2)
+        filters.addWidget(self.alert_type_filter, 0, 3)
+        filters.addWidget(QLabel("Verdict"), 0, 4)
+        filters.addWidget(self.alert_verdict_filter, 0, 5)
+        filters.addWidget(self.alert_period_checkbox, 1, 0)
+        filters.addWidget(self.alert_from_dt, 1, 1)
+        filters.addWidget(self.alert_to_dt, 1, 2)
+        filters.addWidget(QLabel("Search"), 1, 3)
+        filters.addWidget(self.alert_search_input, 1, 4, 1, 2)
+        filters.addWidget(self.alert_refresh_btn, 0, 6)
+        filters.addWidget(self.alert_reset_btn, 1, 6)
+        filters.setColumnStretch(4, 1)
+        layout.addWidget(filters_card, 0)
+
+        body = QHBoxLayout()
+        body.setSpacing(12)
+
+        table_card = QFrame()
+        table_card.setObjectName("panel_card")
+        table_layout = QVBoxLayout(table_card)
+        table_layout.setContentsMargins(14, 14, 14, 14)
+        table_layout.setSpacing(8)
+
+        self.alerts_count_label = QLabel("Alerts: 0")
+        self.alerts_count_label.setObjectName("section_title")
+        table_layout.addWidget(self.alerts_count_label)
+
+        self.alerts_table = QTableWidget(0, 5)
+        self.alerts_table.setHorizontalHeaderLabels(["ID", "Time", "Session", "Type", "Description"])
+        self.alerts_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self.alerts_table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        self.alerts_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.alerts_table.verticalHeader().setVisible(False)
+        self.alerts_table.horizontalHeader().setStretchLastSection(True)
+        self.alerts_table.itemSelectionChanged.connect(self.show_selected_alert_details)
+        table_layout.addWidget(self.alerts_table, 1)
+
+        details_card = QFrame()
+        details_card.setObjectName("panel_card")
+        details_layout = QVBoxLayout(details_card)
+        details_layout.setContentsMargins(14, 14, 14, 14)
+        details_layout.setSpacing(8)
+
+        details_title = QLabel("Детализация события")
+        details_title.setObjectName("section_title")
+        details_layout.addWidget(details_title)
+
+        self.alert_details = QTextEdit()
+        self.alert_details.setReadOnly(True)
+        details_layout.addWidget(self.alert_details, 1)
+
+        body.addWidget(table_card, 3)
+        body.addWidget(details_card, 2)
+        layout.addLayout(body, 1)
+
+        self.alert_rows: list[tuple] = []
+        self.populate_alert_filters()
+        self.load_alerts_history()
+        return page
 
     # ---------- helpers ----------
     def _refresh_widget_style(self, widget: QWidget) -> None:
@@ -508,6 +735,96 @@ class MainWindow(QMainWindow):
         if severity == "incident":
             return QColor("#ffe4e6")
         return QColor("#f8fafc")
+
+    def _parse_json_value(self, value, fallback):
+        if not value:
+            return fallback
+        if isinstance(value, (dict, list)):
+            return value
+        try:
+            parsed = json.loads(value)
+        except (TypeError, ValueError):
+            return fallback
+        return parsed if parsed is not None else fallback
+
+    def _format_delta(self, current, previous) -> str:
+        if current is None or previous is None:
+            return "N/A"
+        delta = current - previous
+        sign = "+" if delta > 0 else ""
+        return f"{sign}{delta}"
+
+    def _assessment_text(self, assessment: dict | None) -> str:
+        if not assessment:
+            return "Risk breakdown: N/A\nFindings: N/A"
+
+        components = assessment.get("components") or {}
+        findings = assessment.get("findings") or []
+        lines = ["Risk breakdown:"]
+        if components:
+            for name, value in components.items():
+                lines.append(f"- {name}: {value}")
+        else:
+            lines.append("- N/A")
+
+        lines.append("")
+        lines.append("Key findings:")
+        if findings:
+            for finding in findings[:6]:
+                lines.append(f"- {finding}")
+        else:
+            lines.append("- N/A")
+        return "\n".join(lines)
+
+    def _stored_assessment_text(self, session_data: dict) -> str:
+        components = self._parse_json_value(session_data.get("risk_components_json"), {})
+        findings = self._parse_json_value(session_data.get("findings_json"), [])
+        assessment = {
+            "components": components if isinstance(components, dict) else {},
+            "findings": findings if isinstance(findings, list) else [],
+        }
+        return self._assessment_text(assessment)
+
+    def _comparison_text(self, current: dict, previous: dict | None) -> str:
+        if not previous:
+            return "Сравнение с предыдущей сессией: N/A"
+
+        return (
+            f"Сравнение с предыдущей сессией #{previous.get('id')}: "
+            f"IB Score {self._format_delta(current.get('final_ib_score'), previous.get('final_ib_score'))}; "
+            f"Incidents {self._format_delta(current.get('total_incidents'), previous.get('total_incidents'))}; "
+            f"Anomalies {self._format_delta(current.get('total_anomalies'), previous.get('total_anomalies'))}; "
+            f"IOC {self._format_delta(current.get('total_ioc_matches'), previous.get('total_ioc_matches'))}"
+        )
+
+    def _set_label_list(self, labels: list[QLabel], values: list[str], empty_text: str) -> None:
+        visible_values = values[:len(labels)] if values else [empty_text]
+        for idx, label in enumerate(labels):
+            if idx < len(visible_values):
+                label.setText(visible_values[idx])
+                label.setVisible(True)
+            else:
+                label.setText("")
+                label.setVisible(False)
+
+    def _set_dashboard_empty_assessment(self) -> None:
+        self.assessment_score_value.setText("N/A")
+        self.assessment_score_level.setText("Недостаточно данных")
+        self.assessment_threat_value.setText("N/A")
+        self.assessment_incident_value.setText("N/A")
+        self.assessment_confidence_value.setText("N/A")
+        self.summary_label.setText("Вывод: недостаточно данных для достоверной оценки")
+        self._set_label_list(self.risk_labels, [], "N/A")
+        self._set_label_list(self.finding_labels, [], "Недостаточно данных")
+
+    def _set_dashboard_assessment_details(self, assessment: dict) -> None:
+        components = assessment.get("components") or {}
+        risk_values = [f"{name}: {value}" for name, value in components.items()]
+        self._set_label_list(self.risk_labels, risk_values, "N/A")
+
+        findings = assessment.get("findings") or []
+        finding_values = [str(item) for item in findings[:4]]
+        self._set_label_list(self.finding_labels, finding_values, "Нет ключевых findings")
 
     def _add_event_row(self, severity: str, src: str, dst: str, reason: str) -> None:
         if self.events_table.rowCount() >= self.max_event_rows:
@@ -590,6 +907,15 @@ class MainWindow(QMainWindow):
             self.pcap_stats_list.addItem(line)
         self.update_top_ips()
 
+    def flush_live_ui_updates(self) -> None:
+        if not self._live_ui_dirty:
+            return
+
+        self._live_ui_dirty = False
+        self._last_live_ui_flush = time.monotonic()
+        self.update_assessment_panel()
+        self.update_stats_display()
+
     def set_status_text(self, text: str) -> None:
         status_text = text if text.startswith("Статус:") else f"Статус: {text}"
 
@@ -614,24 +940,49 @@ class MainWindow(QMainWindow):
             self.threat_label.setText("—")
             self.threat_sub.setText("Недостаточно данных")
 
-            self.summary_label.setText("Вывод: недостаточно данных для достоверной оценки")
+            self._set_dashboard_empty_assessment()
         else:
             score = assessment["overall_score"]
             self.ib_label.setText(f"{score}")
             self.ib_sub.setText(assessment["security_level"])
+            self.assessment_score_value.setText(f"{score}")
+            self.assessment_score_level.setText(assessment["security_level"])
 
             self.threat_label.setText(assessment["threat_level"])
             self.threat_sub.setText(
                 f"Инцидент: {assessment['incident_probability']} | Достоверность: {assessment['confidence']}"
             )
+            self.assessment_threat_value.setText(assessment["threat_level"])
+            self.assessment_incident_value.setText(assessment["incident_probability"])
+            self.assessment_confidence_value.setText(assessment["confidence"])
 
             self.summary_label.setText(f"Вывод: {assessment['summary']}")
+            self._set_dashboard_assessment_details(assessment)
 
         ioc_count = len(getattr(self.engine, "ioc_seen", set())) + len(getattr(self.engine, "domain_ioc_seen", set()))
         infected_count = len(getattr(self.engine, "reported_infected_hosts", set()))
 
         self.ioc_label.setText(str(ioc_count))
         self.infected_label.setText(str(infected_count))
+        self._update_dashboard_comparison()
+
+    def _update_dashboard_comparison(self):
+        session_id = getattr(self.engine, "current_session_db_id", None)
+        if not session_id:
+            self.assessment_compare_label.setText("Нет данных для сравнения")
+            return
+
+        current = {
+            "final_ib_score": getattr(self.engine, "last_ib_score", None),
+            "total_incidents": len(getattr(self.engine, "incidents", {})),
+            "total_anomalies": getattr(self.engine, "total_anom", None),
+            "total_ioc_matches": len(getattr(self.engine, "ioc_seen", set())) + len(getattr(self.engine, "domain_ioc_seen", set())),
+        }
+        previous = get_previous_session_record(session_id)
+        if not previous:
+            self.assessment_compare_label.setText("Нет данных для сравнения")
+            return
+        self.assessment_compare_label.setText(self._comparison_text(current, previous))
 
     def refresh_graphs(self):
         pps_eff = float(getattr(self.engine.rules, "last_pps_eff", 0.0))
@@ -642,6 +993,8 @@ class MainWindow(QMainWindow):
 
     def append_log(self, msg: str) -> None:
         self.log_buffer.append(msg)
+        if len(self.log_buffer) > self.max_log_messages:
+            del self.log_buffer[: len(self.log_buffer) - self.max_log_messages]
 
         if hasattr(self, "pcap_log_area"):
             self.pcap_log_area.append(msg)
@@ -650,17 +1003,23 @@ class MainWindow(QMainWindow):
             )
 
         self._append_to_events_if_needed(msg)
-        self.rebuild_visible_log()
+        if self._is_log_message_visible(msg):
+            self.log_area.append(msg)
+            self.log_area.verticalScrollBar().setValue(
+                self.log_area.verticalScrollBar().maximum()
+            )
+
+    def _is_log_message_visible(self, msg: str) -> bool:
+        show_debug = hasattr(self, "debug_checkbox") and self.debug_checkbox.isChecked()
+        return show_debug or "[DEBUG]" not in msg
 
     def rebuild_visible_log(self):
         if not hasattr(self, "log_area"):
             return
 
-        show_debug = hasattr(self, "debug_checkbox") and self.debug_checkbox.isChecked()
-
         self.log_area.clear()
-        for msg in self.log_buffer[-500:]:
-            if "[DEBUG]" in msg and not show_debug:
+        for msg in self.log_buffer[-self.max_log_messages:]:
+            if not self._is_log_message_visible(msg):
                 continue
             self.log_area.append(msg)
 
@@ -672,18 +1031,154 @@ class MainWindow(QMainWindow):
         if not hasattr(self, "events_list"):
             return
 
-        important_tags = ["[VERDICT]", "[INCIDENT]", "[IOC]", "[SYSTEM]"]
+        important_tags = ["[VERDICT]", "[INCIDENT]", "[IOC]", "[IOC MATCH]", "[IOC DOMAIN MATCH]", "[SYSTEM]"]
         if any(tag in msg for tag in important_tags):
-            plain = msg.replace("<b style='color:#89dceb;'>", "").replace("</b>", "")
-            plain = plain.replace("<b style='color:#a6e3a1;'>", "")
-            plain = plain.replace("<b style='color:#f38ba8;'>", "")
-            plain = plain.replace("<span style='color:#f38ba8;'>", "")
-            plain = plain.replace("<span style='color:#f9e2af;'>", "")
-            plain = plain.replace("</span>", "")
+            plain = self._plain_log(msg)
             self.events_list.insertItem(0, plain)
 
             while self.events_list.count() > 100:
                 self.events_list.takeItem(self.events_list.count() - 1)
+
+    # -------- alerts history --------
+    def _toggle_alert_period_filters(self):
+        enabled = self.alert_period_checkbox.isChecked()
+        self.alert_from_dt.setEnabled(enabled)
+        self.alert_to_dt.setEnabled(enabled)
+
+    def populate_alert_filters(self):
+        self.alert_session_filter.clear()
+        self.alert_session_filter.addItem("Все сессии", None)
+        for session_id, started, duration, profile, iface, score in get_sessions(limit=200):
+            label = f"#{session_id} | {started or '-'} | {profile or '-'} | IB={score if score is not None else '-'}"
+            self.alert_session_filter.addItem(label, session_id)
+
+        self.alert_type_filter.clear()
+        self.alert_type_filter.addItem("Все типы", None)
+        for alert_type in get_alert_types():
+            self.alert_type_filter.addItem(alert_type, alert_type)
+
+        self.alert_verdict_filter.clear()
+        self.alert_verdict_filter.addItem("Любой verdict", None)
+        for verdict in ("malicious", "suspicious", "anomaly", "normal"):
+            self.alert_verdict_filter.addItem(verdict.upper(), verdict)
+
+    def reset_alert_filters(self):
+        self.populate_alert_filters()
+        self.alert_period_checkbox.setChecked(False)
+        self._toggle_alert_period_filters()
+        self.alert_search_input.clear()
+        now = datetime.now()
+        self.alert_from_dt.setDateTime(QDateTime(now - timedelta(days=7)))
+        self.alert_to_dt.setDateTime(QDateTime(now))
+        self.load_alerts_history()
+
+    def _alert_filter_datetime(self, widget: QDateTimeEdit) -> str:
+        return widget.dateTime().toString("yyyy-MM-dd HH:mm:ss")
+
+    def load_alerts_history(self):
+        session_id = self.alert_session_filter.currentData()
+        alert_type = self.alert_type_filter.currentData()
+        verdict = self.alert_verdict_filter.currentData()
+        search_text = self.alert_search_input.text().strip() or None
+
+        started_from = None
+        started_to = None
+        if self.alert_period_checkbox.isChecked():
+            started_from = self._alert_filter_datetime(self.alert_from_dt)
+            started_to = self._alert_filter_datetime(self.alert_to_dt)
+
+        self.alert_rows = query_alerts(
+            session_id=session_id,
+            started_from=started_from,
+            started_to=started_to,
+            alert_type=alert_type,
+            verdict=verdict,
+            search_text=search_text,
+            limit=500,
+        )
+        self.render_alert_rows()
+
+    def render_alert_rows(self):
+        self.alerts_table.setRowCount(0)
+        self.alerts_count_label.setText(f"Alerts: {len(self.alert_rows)}")
+        self.alert_details.clear()
+
+        for row_idx, row in enumerate(self.alert_rows):
+            alert_id, timestamp, session_id, alert_type, description = row
+            self.alerts_table.insertRow(row_idx)
+            values = [
+                str(alert_id),
+                timestamp or "-",
+                str(session_id) if session_id is not None else "-",
+                alert_type or "-",
+                description or "",
+            ]
+            for col, value in enumerate(values):
+                item = QTableWidgetItem(value)
+                item.setData(Qt.ItemDataRole.UserRole, row_idx)
+                self.alerts_table.setItem(row_idx, col, item)
+
+        self.alerts_table.resizeColumnsToContents()
+
+    def _extract_alert_verdict(self, alert_type: str, description: str) -> str:
+        text = description or ""
+        verdict = re.search(r"verdict=([A-Za-z_]+)", text, flags=re.IGNORECASE)
+        if verdict:
+            return verdict.group(1).upper()
+
+        verdict = re.search(r"\[VERDICT\]\s+([A-Za-z_]+)", text, flags=re.IGNORECASE)
+        if verdict:
+            return verdict.group(1).upper()
+
+        if alert_type == "INCIDENT":
+            incident = re.search(r"\|\s*verdict=([^|]+)", text, flags=re.IGNORECASE)
+            if incident:
+                return incident.group(1).strip().upper()
+        return "-"
+
+    def _extract_alert_ips(self, description: str) -> str:
+        ips = re.findall(r"\b(?:\d{1,3}\.){3}\d{1,3}\b", description or "")
+        return ", ".join(dict.fromkeys(ips)) if ips else "-"
+
+    def show_selected_alert_details(self):
+        selected = self.alerts_table.selectedItems()
+        if not selected:
+            self.alert_details.clear()
+            return
+
+        row_idx = selected[0].data(Qt.ItemDataRole.UserRole)
+        if row_idx is None or row_idx >= len(self.alert_rows):
+            self.alert_details.clear()
+            return
+
+        alert_id, timestamp, session_id, alert_type, description = self.alert_rows[row_idx]
+        verdict = self._extract_alert_verdict(alert_type or "", description or "")
+        ips = self._extract_alert_ips(description or "")
+        session_context = ""
+        if session_id is not None:
+            session_data = get_session_record(session_id)
+            if session_data:
+                session_context = f"""
+
+Linked session assessment:
+IB Score: {session_data.get('final_ib_score') if session_data.get('final_ib_score') is not None else '-'}
+IB Level: {session_data.get('final_ib_level') or '-'}
+Threat Level: {session_data.get('threat_level') or '-'}
+Confidence: {session_data.get('confidence') or '-'}
+Summary: {session_data.get('summary_text') or '-'}
+"""
+        detail = f"""ID: {alert_id}
+Time: {timestamp or '-'}
+Session ID: {session_id if session_id is not None else '-'}
+Type: {alert_type or '-'}
+Verdict: {verdict}
+IPs: {ips}
+
+Description:
+{description or '-'}
+{session_context}
+"""
+        self.alert_details.setText(detail)
 
     # -------- sessions --------
     def load_sessions(self):
@@ -712,30 +1207,49 @@ class MainWindow(QMainWindow):
             self.session_details.setText("Нет данных.")
             return
 
-        s = get_session_by_id(session_id)
+        s = get_session_record(session_id)
         if not s:
             self.session_details.setText("Сессия не найдена.")
             return
 
+        previous = get_previous_session_record(session_id)
+        comparison = self._comparison_text(s, previous)
+        assessment_details = self._stored_assessment_text(s)
         text = f"""
-ID: {s[0]}
-Start: {s[1]}
-Stop: {s[2]}
-Duration: {s[3]} sec
+SESSION
+ID: {s.get('id')}
+Start: {s.get('started_at') or '-'}
+Stop: {s.get('stopped_at') or '-'}
+Duration: {s.get('duration_sec') or 0} sec
 
-Profile: {s[4]}
-Interface: {s[5]}
+Profile: {s.get('profile_name') or '-'}
+Interface: {s.get('interface_name') or '-'}
 
-Packets: {s[6]}
-Anomalies: {s[7]}
-Incidents: {s[8]}
-IB Score: {s[9]}
+SECURITY ASSESSMENT
+IB Score: {s.get('final_ib_score') if s.get('final_ib_score') is not None else '-'}
+IB Level: {s.get('final_ib_level') or '-'}
+Threat Level: {s.get('threat_level') or '-'}
+Incident Probability: {s.get('incident_probability') or '-'}
+Confidence: {s.get('confidence') or '-'}
+Total Risk: {s.get('total_risk') if s.get('total_risk') is not None else '-'}
 
 Summary:
-{s[10] or '-'}
+{s.get('summary_text') or '-'}
+
+EXPLANATION
+{assessment_details}
+
+STATISTICS
+Packets: {s.get('total_packets') or 0}
+Anomalies: {s.get('total_anomalies') or 0}
+Incidents: {s.get('total_incidents') or 0}
+IOC matches: {s.get('total_ioc_matches') or 0}
+
+COMPARISON
+{comparison}
 
 Report path:
-{s[11] or '-'}
+{s.get('report_path') or '-'}
 """
         self.session_details.setText(text)
 
@@ -756,13 +1270,39 @@ Report path:
             return
 
         report_path = s[11]
-        if not report_path:
-            QMessageBox.information(self, "Нет отчёта", "Для этой сессии HTML-отчёт ещё не сохранён.")
+        if report_path and os.path.exists(report_path):
+            webbrowser.open(report_path)
             return
-        if not os.path.exists(report_path):
-            QMessageBox.warning(self, "Файл не найден", f"HTML-отчёт не найден:\n{report_path}")
+
+        file_path, _ = QFileDialog.getSaveFileName(
+            self,
+            "Сохранить HTML-отчёт по сессии",
+            f"network_session_{session_id}_report.html",
+            "HTML Files (*.html)",
+        )
+        if not file_path:
             return
-        webbrowser.open(report_path)
+
+        try:
+            html_report = build_html_report_for_session(session_id)
+            with open(file_path, "w", encoding="utf-8") as f:
+                f.write(html_report)
+            update_session_report_path(session_id, file_path)
+            self.load_sessions()
+            for row in range(self.sessions_list.count()):
+                refreshed_item = self.sessions_list.item(row)
+                if refreshed_item.data(Qt.ItemDataRole.UserRole) == session_id:
+                    self.sessions_list.setCurrentItem(refreshed_item)
+                    self.show_session_details(refreshed_item)
+                    break
+            QMessageBox.information(self, "Готово", "HTML-отчёт по выбранной сессии сформирован.")
+            webbrowser.open(file_path)
+        except Exception as e:
+            QMessageBox.warning(
+                self,
+                "Ошибка отчёта",
+                f"Не удалось сформировать HTML-отчёт:\n{type(e).__name__}: {e}",
+            )
 
     # -------- profile --------
     def apply_profile_on_startup(self) -> None:
@@ -798,8 +1338,9 @@ Report path:
 
     def on_worker_message(self, msg: str) -> None:
         self.append_log(msg)
-        self.update_assessment_panel()
-        self.update_stats_display()
+        self._live_ui_dirty = True
+        if time.monotonic() - self._last_live_ui_flush >= 0.5:
+            self.flush_live_ui_updates()
 
     def on_worker_finished(self) -> None:
         self.is_monitoring = False
@@ -925,7 +1466,7 @@ Report path:
         with open(file_path, "w", encoding="utf-8") as f:
             f.write(html_report)
 
-        session_id = get_last_session_id()
+        session_id = getattr(self.engine, "current_session_db_id", None) or get_last_session_id()
         if session_id is not None:
             update_session_report_path(session_id, file_path)
         self.load_sessions()
@@ -933,7 +1474,16 @@ Report path:
 
     def switch_page(self, index: int) -> None:
         self.pages.setCurrentIndex(index)
-        nav_buttons = [self.main_nav_btn, self.pcap_nav_btn, self.settings_nav_btn, self.sessions_nav_btn]
+        if index == 4 and hasattr(self, "alerts_table"):
+            self.populate_alert_filters()
+            self.load_alerts_history()
+        nav_buttons = [
+            self.main_nav_btn,
+            self.pcap_nav_btn,
+            self.settings_nav_btn,
+            self.sessions_nav_btn,
+            self.alerts_nav_btn,
+        ]
         for i, btn in enumerate(nav_buttons):
             btn.setChecked(i == index)
             btn.setObjectName("nav_btn_active" if i == index else "nav_btn")
