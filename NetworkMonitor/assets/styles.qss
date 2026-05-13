@@ -26,10 +26,12 @@ QLabel#nav_subtitle {
 
 QPushButton#nav_btn,
 QPushButton#nav_btn_active {
-    text-align: left;
-    padding: 12px 14px;
+    text-align: center;
+    padding: 8px 6px;
     border-radius: 8px;
     border: 1px solid transparent;
+    min-height: 34px;
+    font-weight: 600;
 }
 
 QPushButton#nav_btn {
@@ -48,6 +50,22 @@ QPushButton#nav_btn_active {
     font-weight: 600;
 }
 
+QPushButton#sidebar_toggle_btn {
+    background-color: #162036;
+    color: #f8fafc;
+    border: 1px solid #24324c;
+    border-radius: 8px;
+    min-height: 34px;
+    padding: 0;
+    font-size: 16px;
+    font-weight: 700;
+}
+
+QPushButton#sidebar_toggle_btn:hover {
+    background-color: #1d4ed8;
+    border-color: #1d4ed8;
+}
+
 QFrame#top_card,
 QFrame#top_bar,
 QFrame#panel_card,
@@ -60,6 +78,7 @@ QFrame#assessment_score,
 QFrame#assessment_badge,
 QFrame#assessment_score_panel,
 QFrame#assessment_facts_panel,
+QFrame#assessment_fact_card,
 QFrame#assessment_subpanel,
 QFrame#comparison_card {
     background-color: #ffffff;
@@ -72,6 +91,13 @@ QFrame#assessment_score,
 QFrame#metric_card_primary {
     border: 1px solid #bfdbfe;
     background-color: #eff6ff;
+}
+
+QFrame#assessment_fact_card,
+QFrame#assessment_subpanel,
+QFrame#comparison_card {
+    background-color: #ffffff;
+    border: 1px solid #e2e8f0;
 }
 
 QFrame#assessment_badge {
@@ -124,7 +150,7 @@ QLabel#metric_value {
 
 QLabel#assessment_score_value {
     color: #1d4ed8;
-    font-size: 42px;
+    font-size: 30px;
     font-weight: 800;
     padding: 0;
 }
@@ -140,6 +166,20 @@ QLabel#finding_item {
     color: #475569;
     font-size: 12px;
     padding: 0;
+}
+
+QLabel#assessment_fact_value {
+    color: #0f172a;
+    font-size: 14px;
+    font-weight: 700;
+}
+
+QLabel#risk_row,
+QLabel#finding_item {
+    color: #334155;
+    font-size: 12px;
+    padding-top: 1px;
+    padding-bottom: 1px;
 }
 
 QLabel#status_chip,

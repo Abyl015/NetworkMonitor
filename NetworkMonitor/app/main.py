@@ -106,16 +106,29 @@ class MainWindow(QMainWindow):
         root_layout.setContentsMargins(0, 0, 0, 0)
         root_layout.setSpacing(0)
 
+        self.sidebar_expanded_width = 220
+        self.sidebar_collapsed_width = 64
+        self.sidebar_collapsed = False
+
         sidebar = QFrame()
         sidebar.setObjectName("sidebar")
-        sidebar.setFixedWidth(220)
+        sidebar.setFixedWidth(self.sidebar_expanded_width)
+        self.sidebar = sidebar
 
         nav_layout = QVBoxLayout(sidebar)
         nav_layout.setContentsMargins(16, 18, 16, 18)
         nav_layout.setSpacing(8)
+        self.nav_layout = nav_layout
+
+        self.sidebar_toggle_btn = QPushButton("☰")
+        self.sidebar_toggle_btn.setObjectName("sidebar_toggle_btn")
+        self.sidebar_toggle_btn.setToolTip("Toggle sidebar")
+        self.sidebar_toggle_btn.clicked.connect(self.toggle_sidebar)
+        nav_layout.addWidget(self.sidebar_toggle_btn)
 
         nav_title = QLabel("NETGUARD")
         nav_title.setObjectName("nav_title")
+        self.nav_title = nav_title
         nav_layout.addWidget(nav_title)
 
         self.main_nav_btn = QPushButton("Dashboard")
@@ -143,6 +156,7 @@ class MainWindow(QMainWindow):
         self.alerts_nav_btn.clicked.connect(lambda: self.switch_page(4))
         nav_layout.addWidget(self.alerts_nav_btn)
 
+        self._apply_sidebar_state(refresh_styles=False)
         nav_layout.addStretch(1)
 
         self.pages = QStackedWidget()
@@ -284,37 +298,38 @@ class MainWindow(QMainWindow):
         # ---------- SUMMARY ----------
         summary_card = QFrame()
         summary_card.setObjectName("summary_card")
+        summary_card.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Maximum)
         summary_layout = QVBoxLayout(summary_card)
-        summary_layout.setContentsMargins(18, 16, 18, 16)
-        summary_layout.setSpacing(12)
+        summary_layout.setContentsMargins(16, 14, 16, 14)
+        summary_layout.setSpacing(10)
 
-        assessment_top = QHBoxLayout()
-        assessment_top.setSpacing(10)
+        assessment_grid = QGridLayout()
+        assessment_grid.setHorizontalSpacing(10)
+        assessment_grid.setVerticalSpacing(10)
 
         score_panel = QFrame()
         score_panel.setObjectName("assessment_score_panel")
+        score_panel.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         score_layout = QVBoxLayout(score_panel)
-        score_layout.setContentsMargins(18, 16, 18, 16)
-        score_layout.setSpacing(6)
+        score_layout.setContentsMargins(14, 12, 14, 12)
+        score_layout.setSpacing(4)
 
         score_title = QLabel("IB Score")
         score_title.setObjectName("assessment_fact_label")
+        score_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.assessment_score_value = QLabel("N/A")
         self.assessment_score_value.setObjectName("assessment_score_value")
+        self.assessment_score_value.setWordWrap(True)
+        self.assessment_score_value.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.assessment_score_level = QLabel("Недостаточно данных")
         self.assessment_score_level.setWordWrap(True)
         self.assessment_score_level.setObjectName("assessment_score_level")
+        self.assessment_score_level.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        score_panel.setMinimumHeight(104)
         score_layout.addWidget(score_title)
         score_layout.addWidget(self.assessment_score_value)
         score_layout.addWidget(self.assessment_score_level)
-        assessment_top.addWidget(score_panel, 2)
-
-        facts_panel = QFrame()
-        facts_panel.setObjectName("assessment_facts_panel")
-        facts_grid = QGridLayout(facts_panel)
-        facts_grid.setContentsMargins(18, 16, 18, 16)
-        facts_grid.setHorizontalSpacing(18)
-        facts_grid.setVerticalSpacing(10)
+        assessment_grid.addWidget(score_panel, 0, 0)
 
         self.assessment_threat_value = QLabel("N/A")
         self.assessment_incident_value = QLabel("N/A")
@@ -324,20 +339,31 @@ class MainWindow(QMainWindow):
             ("Инцидент", self.assessment_incident_value),
             ("Достоверность", self.assessment_confidence_value),
         ]
-        for row, (label_text, value_label) in enumerate(fact_items):
+        for col, (label_text, value_label) in enumerate(fact_items, start=1):
+            fact_card = QFrame()
+            fact_card.setObjectName("assessment_fact_card")
+            fact_card.setMinimumHeight(82)
+            fact_card.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+            fact_layout = QVBoxLayout(fact_card)
+            fact_layout.setContentsMargins(12, 10, 12, 10)
+            fact_layout.setSpacing(4)
             label = QLabel(label_text)
             label.setObjectName("assessment_fact_label")
             value_label.setObjectName("assessment_fact_value")
             value_label.setWordWrap(True)
-            facts_grid.addWidget(label, row, 0)
-            facts_grid.addWidget(value_label, row, 1)
-        facts_grid.setColumnStretch(1, 1)
-        assessment_top.addWidget(facts_panel, 3)
-        summary_layout.addLayout(assessment_top)
+            fact_layout.addWidget(label)
+            fact_layout.addWidget(value_label)
+            assessment_grid.addWidget(fact_card, 0, col)
+        assessment_grid.setColumnStretch(0, 2)
+        assessment_grid.setColumnStretch(1, 1)
+        assessment_grid.setColumnStretch(2, 1)
+        assessment_grid.setColumnStretch(3, 1)
+        summary_layout.addLayout(assessment_grid)
 
         self.summary_label = QLabel("Вывод: недостаточно данных для достоверной оценки")
         self.summary_label.setWordWrap(True)
         self.summary_label.setObjectName("summary_label")
+        self.summary_label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Maximum)
         summary_layout.addWidget(self.summary_label)
 
         analysis_layout = QHBoxLayout()
@@ -345,8 +371,10 @@ class MainWindow(QMainWindow):
 
         risk_panel = QFrame()
         risk_panel.setObjectName("assessment_subpanel")
+        risk_panel.setMinimumHeight(136)
+        risk_panel.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         risk_layout = QVBoxLayout(risk_panel)
-        risk_layout.setContentsMargins(14, 12, 14, 12)
+        risk_layout.setContentsMargins(12, 10, 12, 10)
         risk_layout.setSpacing(6)
         risk_title = QLabel("Risk breakdown")
         risk_title.setObjectName("assessment_subtitle")
@@ -362,8 +390,10 @@ class MainWindow(QMainWindow):
 
         findings_panel = QFrame()
         findings_panel.setObjectName("assessment_subpanel")
+        findings_panel.setMinimumHeight(136)
+        findings_panel.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         findings_layout = QVBoxLayout(findings_panel)
-        findings_layout.setContentsMargins(14, 12, 14, 12)
+        findings_layout.setContentsMargins(12, 10, 12, 10)
         findings_layout.setSpacing(6)
         findings_title = QLabel("Key findings")
         findings_title.setObjectName("assessment_subtitle")
@@ -380,8 +410,9 @@ class MainWindow(QMainWindow):
 
         compare_card = QFrame()
         compare_card.setObjectName("comparison_card")
+        compare_card.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Maximum)
         compare_layout = QVBoxLayout(compare_card)
-        compare_layout.setContentsMargins(14, 10, 14, 10)
+        compare_layout.setContentsMargins(12, 9, 12, 9)
         self.assessment_compare_label = QLabel("Нет данных для сравнения")
         self.assessment_compare_label.setWordWrap(True)
         self.assessment_compare_label.setObjectName("comparison_text")
@@ -410,11 +441,10 @@ class MainWindow(QMainWindow):
         events_layout.addWidget(events_title)
 
         self.events_list = QListWidget()
-        self.events_list.setMinimumHeight(180)
-        self.events_list.setMaximumHeight(220)
+        self.events_list.setMinimumHeight(120)
         events_layout.addWidget(self.events_list)
 
-        left_layout.addWidget(events_card, 0)
+        left_layout.addWidget(events_card, 2)
 
         log_card = QFrame()
         log_card.setObjectName("section_card")
@@ -423,26 +453,32 @@ class MainWindow(QMainWindow):
         log_layout.setSpacing(8)
 
         log_top = QHBoxLayout()
+        log_top.setContentsMargins(0, 0, 0, 0)
+        log_top.setSpacing(8)
         log_title = QLabel("Живой лог")
         log_title.setObjectName("section_title")
+        log_title.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         log_top.addWidget(log_title)
-        log_top.addStretch()
 
         from PyQt6.QtWidgets import QCheckBox
         self.debug_checkbox = QCheckBox("Показывать DEBUG")
+        self.debug_checkbox.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Fixed)
         self.debug_checkbox.stateChanged.connect(self.rebuild_visible_log)
-        log_top.addWidget(self.debug_checkbox)
+        log_top.addWidget(
+            self.debug_checkbox,
+            0,
+            Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
+        )
         log_layout.addLayout(log_top)
 
         self.log_buffer = []
         self.log_area = QTextEdit()
         self.log_area.setReadOnly(True)
         self.log_area.document().setMaximumBlockCount(self.max_log_messages)
-        self.log_area.setMinimumHeight(120)
-        self.log_area.setMaximumHeight(150)
+        self.log_area.setMinimumHeight(180)
         log_layout.addWidget(self.log_area)
 
-        left_layout.addWidget(log_card, 0)
+        left_layout.addWidget(log_card, 3)
 
         right_widget = QWidget()
         right_layout = QVBoxLayout(right_widget)
@@ -460,11 +496,10 @@ class MainWindow(QMainWindow):
         threats_layout.addWidget(threats_title)
 
         self.stats_list = QListWidget()
-        self.stats_list.setMinimumHeight(120)
-        self.stats_list.setMaximumHeight(150)
+        self.stats_list.setMinimumHeight(110)
         threats_layout.addWidget(self.stats_list)
 
-        right_layout.addWidget(threats_card, 0)
+        right_layout.addWidget(threats_card, 1)
 
         graph_card = QFrame()
         graph_card.setObjectName("section_card")
@@ -474,10 +509,9 @@ class MainWindow(QMainWindow):
 
         self.plot = PlotWidget("Метрики в реальном времени")
         self.plot.setMinimumHeight(240)
-        self.plot.setMaximumHeight(280)
         graph_layout.addWidget(self.plot)
 
-        right_layout.addWidget(graph_card, 1)
+        right_layout.addWidget(graph_card, 3)
 
         center_layout.addWidget(left_widget, 3)
         center_layout.addWidget(right_widget, 2)
@@ -717,6 +751,37 @@ class MainWindow(QMainWindow):
         widget.style().unpolish(widget)
         widget.style().polish(widget)
         widget.update()
+
+    def _nav_button_specs(self):
+        return [
+            (self.main_nav_btn, "Dashboard", "D", "Dashboard"),
+            (self.pcap_nav_btn, "PCAP", "P", "PCAP"),
+            (self.settings_nav_btn, "Settings", "Cfg", "Settings"),
+            (self.sessions_nav_btn, "Sessions", "Ses", "Sessions"),
+            (self.alerts_nav_btn, "Alerts", "Al", "Alerts"),
+        ]
+
+    def toggle_sidebar(self) -> None:
+        self.sidebar_collapsed = not self.sidebar_collapsed
+        self._apply_sidebar_state()
+
+    def _apply_sidebar_state(self, refresh_styles: bool = True) -> None:
+        collapsed = self.sidebar_collapsed
+        width = self.sidebar_collapsed_width if collapsed else self.sidebar_expanded_width
+        self.sidebar.setFixedWidth(width)
+        self.nav_title.setVisible(not collapsed)
+        self.nav_layout.setContentsMargins(8 if collapsed else 16, 18, 8 if collapsed else 16, 18)
+
+        for btn, expanded_text, collapsed_text, tooltip in self._nav_button_specs():
+            btn.setText(collapsed_text if collapsed else expanded_text)
+            btn.setToolTip(tooltip)
+            btn.setMinimumWidth(0)
+            if refresh_styles:
+                self._refresh_widget_style(btn)
+
+        if refresh_styles:
+            self._refresh_widget_style(self.sidebar)
+            self._refresh_widget_style(self.sidebar_toggle_btn)
 
     def _plain_log(self, msg: str) -> str:
         text = re.sub(r"<[^>]+>", "", msg)
@@ -1488,6 +1553,8 @@ Report path:
             btn.setChecked(i == index)
             btn.setObjectName("nav_btn_active" if i == index else "nav_btn")
             self._refresh_widget_style(btn)
+        if hasattr(self, "sidebar"):
+            self._apply_sidebar_state(refresh_styles=False)
 
     def closeEvent(self, event):
         try:

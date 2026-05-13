@@ -6,3 +6,13 @@ __pycache__/
 *.pyo
 *.pyd
 *.db
+# Local runtime database
+NetworkMonitor/storage/traffic_data.db
+*.db
+*.sqlite
+*.sqlite3
+
+# Generated reports and temporary files
+reports/
+*.html
+rate-limits-access.md
