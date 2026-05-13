@@ -108,11 +108,11 @@ class MainWindow(QMainWindow):
 
         sidebar = QFrame()
         sidebar.setObjectName("sidebar")
-        sidebar.setFixedWidth(210)
+        sidebar.setFixedWidth(220)
 
         nav_layout = QVBoxLayout(sidebar)
-        nav_layout.setContentsMargins(14, 16, 14, 16)
-        nav_layout.setSpacing(10)
+        nav_layout.setContentsMargins(16, 18, 16, 18)
+        nav_layout.setSpacing(8)
 
         nav_title = QLabel("NETGUARD")
         nav_title.setObjectName("nav_title")
@@ -128,7 +128,7 @@ class MainWindow(QMainWindow):
         self.pcap_nav_btn.clicked.connect(lambda: self.switch_page(1))
         nav_layout.addWidget(self.pcap_nav_btn)
 
-        self.settings_nav_btn = QPushButton("Settings / Profile")
+        self.settings_nav_btn = QPushButton("Settings")
         self.settings_nav_btn.setCheckable(True)
         self.settings_nav_btn.clicked.connect(lambda: self.switch_page(2))
         nav_layout.addWidget(self.settings_nav_btn)
@@ -189,15 +189,15 @@ class MainWindow(QMainWindow):
     def _build_main_page(self) -> QWidget:
         page = QWidget()
         page_layout = QVBoxLayout(page)
-        page_layout.setContentsMargins(12, 12, 12, 12)
-        page_layout.setSpacing(10)
+        page_layout.setContentsMargins(18, 18, 18, 18)
+        page_layout.setSpacing(12)
 
         # ---------- TOP BAR ----------
         top_card = QFrame()
         top_card.setObjectName("top_card")
         top_grid = QGridLayout(top_card)
-        top_grid.setContentsMargins(14, 12, 14, 12)
-        top_grid.setHorizontalSpacing(10)
+        top_grid.setContentsMargins(18, 14, 18, 14)
+        top_grid.setHorizontalSpacing(8)
         top_grid.setVerticalSpacing(8)
 
         self.page_title = QLabel("Панель мониторинга сети")
@@ -223,16 +223,16 @@ class MainWindow(QMainWindow):
         self.iface_combo.setMinimumWidth(170)
         self.iface_combo.setMaximumWidth(260)
 
-        self.refresh_ifaces_btn = QPushButton("Обновить интерфейс")
+        self.refresh_ifaces_btn = QPushButton("Refresh")
         self.refresh_ifaces_btn.clicked.connect(self.load_interfaces_to_combo)
 
-        self.settings_btn = QPushButton("Профили / настройки")
+        self.settings_btn = QPushButton("Profiles")
         self.settings_btn.clicked.connect(self.open_settings)
 
-        self.export_btn = QPushButton("Экспорт отчёта")
+        self.export_btn = QPushButton("Report")
         self.export_btn.clicked.connect(self.export_report)
 
-        self.action_btn = QPushButton("Запустить мониторинг")
+        self.action_btn = QPushButton("Start")
         self.action_btn.setObjectName("primary_btn")
         self.action_btn.clicked.connect(self.toggle_monitoring)
 
@@ -252,7 +252,7 @@ class MainWindow(QMainWindow):
 
         # ---------- METRIC CARDS ----------
         cards_row = QHBoxLayout()
-        cards_row.setSpacing(10)
+        cards_row.setSpacing(12)
 
         self.ib_label = QLabel("—")
         self.ib_label.setObjectName("metric_value")
@@ -285,8 +285,8 @@ class MainWindow(QMainWindow):
         summary_card = QFrame()
         summary_card.setObjectName("summary_card")
         summary_layout = QVBoxLayout(summary_card)
-        summary_layout.setContentsMargins(14, 12, 14, 12)
-        summary_layout.setSpacing(10)
+        summary_layout.setContentsMargins(18, 16, 18, 16)
+        summary_layout.setSpacing(12)
 
         assessment_top = QHBoxLayout()
         assessment_top.setSpacing(10)
@@ -294,8 +294,8 @@ class MainWindow(QMainWindow):
         score_panel = QFrame()
         score_panel.setObjectName("assessment_score_panel")
         score_layout = QVBoxLayout(score_panel)
-        score_layout.setContentsMargins(14, 12, 14, 12)
-        score_layout.setSpacing(4)
+        score_layout.setContentsMargins(18, 16, 18, 16)
+        score_layout.setSpacing(6)
 
         score_title = QLabel("IB Score")
         score_title.setObjectName("assessment_fact_label")
@@ -312,9 +312,9 @@ class MainWindow(QMainWindow):
         facts_panel = QFrame()
         facts_panel.setObjectName("assessment_facts_panel")
         facts_grid = QGridLayout(facts_panel)
-        facts_grid.setContentsMargins(14, 12, 14, 12)
-        facts_grid.setHorizontalSpacing(16)
-        facts_grid.setVerticalSpacing(8)
+        facts_grid.setContentsMargins(18, 16, 18, 16)
+        facts_grid.setHorizontalSpacing(18)
+        facts_grid.setVerticalSpacing(10)
 
         self.assessment_threat_value = QLabel("N/A")
         self.assessment_incident_value = QLabel("N/A")
@@ -346,8 +346,8 @@ class MainWindow(QMainWindow):
         risk_panel = QFrame()
         risk_panel.setObjectName("assessment_subpanel")
         risk_layout = QVBoxLayout(risk_panel)
-        risk_layout.setContentsMargins(12, 10, 12, 10)
-        risk_layout.setSpacing(5)
+        risk_layout.setContentsMargins(14, 12, 14, 12)
+        risk_layout.setSpacing(6)
         risk_title = QLabel("Risk breakdown")
         risk_title.setObjectName("assessment_subtitle")
         risk_layout.addWidget(risk_title)
@@ -363,8 +363,8 @@ class MainWindow(QMainWindow):
         findings_panel = QFrame()
         findings_panel.setObjectName("assessment_subpanel")
         findings_layout = QVBoxLayout(findings_panel)
-        findings_layout.setContentsMargins(12, 10, 12, 10)
-        findings_layout.setSpacing(5)
+        findings_layout.setContentsMargins(14, 12, 14, 12)
+        findings_layout.setSpacing(6)
         findings_title = QLabel("Key findings")
         findings_title.setObjectName("assessment_subtitle")
         findings_layout.addWidget(findings_title)
@@ -381,7 +381,7 @@ class MainWindow(QMainWindow):
         compare_card = QFrame()
         compare_card.setObjectName("comparison_card")
         compare_layout = QVBoxLayout(compare_card)
-        compare_layout.setContentsMargins(12, 8, 12, 8)
+        compare_layout.setContentsMargins(14, 10, 14, 10)
         self.assessment_compare_label = QLabel("Нет данных для сравнения")
         self.assessment_compare_label.setWordWrap(True)
         self.assessment_compare_label.setObjectName("comparison_text")
@@ -392,7 +392,7 @@ class MainWindow(QMainWindow):
 
         # ---------- CENTER ----------
         center_layout = QHBoxLayout()
-        center_layout.setSpacing(10)
+        center_layout.setSpacing(12)
 
         left_widget = QWidget()
         left_layout = QVBoxLayout(left_widget)
@@ -402,7 +402,7 @@ class MainWindow(QMainWindow):
         events_card = QFrame()
         events_card.setObjectName("section_card")
         events_layout = QVBoxLayout(events_card)
-        events_layout.setContentsMargins(14, 12, 14, 12)
+        events_layout.setContentsMargins(16, 14, 16, 14)
         events_layout.setSpacing(8)
 
         events_title = QLabel("Последние события безопасности")
@@ -419,7 +419,7 @@ class MainWindow(QMainWindow):
         log_card = QFrame()
         log_card.setObjectName("section_card")
         log_layout = QVBoxLayout(log_card)
-        log_layout.setContentsMargins(14, 12, 14, 12)
+        log_layout.setContentsMargins(16, 14, 16, 14)
         log_layout.setSpacing(8)
 
         log_top = QHBoxLayout()
@@ -452,7 +452,7 @@ class MainWindow(QMainWindow):
         threats_card = QFrame()
         threats_card.setObjectName("section_card")
         threats_layout = QVBoxLayout(threats_card)
-        threats_layout.setContentsMargins(14, 12, 14, 12)
+        threats_layout.setContentsMargins(16, 14, 16, 14)
         threats_layout.setSpacing(8)
 
         threats_title = QLabel("Топ угроз по IP")
@@ -469,7 +469,7 @@ class MainWindow(QMainWindow):
         graph_card = QFrame()
         graph_card.setObjectName("section_card")
         graph_layout = QVBoxLayout(graph_card)
-        graph_layout.setContentsMargins(14, 12, 14, 12)
+        graph_layout.setContentsMargins(16, 14, 16, 14)
         graph_layout.setSpacing(8)
 
         self.plot = PlotWidget("Метрики в реальном времени")
@@ -488,7 +488,7 @@ class MainWindow(QMainWindow):
     def _build_pcap_page(self) -> QWidget:
         page = QWidget()
         layout = QVBoxLayout(page)
-        layout.setContentsMargins(18, 18, 18, 18)
+        layout.setContentsMargins(20, 20, 20, 20)
         layout.setSpacing(14)
 
         title = QLabel("PCAP analysis")
@@ -503,7 +503,7 @@ class MainWindow(QMainWindow):
         action_card = QFrame()
         action_card.setObjectName("panel_card")
         action_layout = QHBoxLayout(action_card)
-        action_layout.setContentsMargins(14, 14, 14, 14)
+        action_layout.setContentsMargins(16, 14, 16, 14)
         self.pcap_btn = QPushButton("Выбрать PCAP файл")
         self.pcap_btn.clicked.connect(self.open_pcap)
         action_layout.addWidget(self.pcap_btn)
@@ -528,7 +528,7 @@ class MainWindow(QMainWindow):
     def _build_settings_page(self) -> QWidget:
         page = QWidget()
         layout = QVBoxLayout(page)
-        layout.setContentsMargins(18, 18, 18, 18)
+        layout.setContentsMargins(20, 20, 20, 20)
         layout.setSpacing(14)
 
         title = QLabel("Settings / Profile")
@@ -543,7 +543,7 @@ class MainWindow(QMainWindow):
         info_card = QFrame()
         info_card.setObjectName("panel_card")
         info_layout = QGridLayout(info_card)
-        info_layout.setContentsMargins(14, 14, 14, 14)
+        info_layout.setContentsMargins(16, 14, 16, 14)
         info_layout.setHorizontalSpacing(20)
         info_layout.setVerticalSpacing(10)
 
@@ -558,7 +558,7 @@ class MainWindow(QMainWindow):
         info_layout.addWidget(self.ioc_count_lbl, 1, 1)
         layout.addWidget(info_card)
 
-        self.settings_page_btn = QPushButton("Открыть диалог настроек")
+        self.settings_page_btn = QPushButton("Profiles")
         self.settings_page_btn.clicked.connect(self.open_settings)
         layout.addWidget(self.settings_page_btn)
         layout.addStretch(1)
@@ -566,13 +566,13 @@ class MainWindow(QMainWindow):
 
     def _build_sessions_page(self):
         layout = QHBoxLayout(self.sessions_page)
-        layout.setContentsMargins(18, 18, 18, 18)
+        layout.setContentsMargins(20, 20, 20, 20)
         layout.setSpacing(14)
 
         left_card = QFrame()
         left_card.setObjectName("panel_card")
         left_layout = QVBoxLayout(left_card)
-        left_layout.setContentsMargins(14, 14, 14, 14)
+        left_layout.setContentsMargins(16, 14, 16, 14)
         left_layout.setSpacing(10)
 
         sessions_title = QLabel("История сессий")
@@ -583,14 +583,14 @@ class MainWindow(QMainWindow):
         self.sessions_list.itemClicked.connect(self.show_session_details)
         left_layout.addWidget(self.sessions_list)
 
-        self.refresh_sessions_btn = QPushButton("Обновить список")
+        self.refresh_sessions_btn = QPushButton("Refresh")
         self.refresh_sessions_btn.clicked.connect(self.load_sessions)
         left_layout.addWidget(self.refresh_sessions_btn)
 
         right_card = QFrame()
         right_card.setObjectName("panel_card")
         right_layout = QVBoxLayout(right_card)
-        right_layout.setContentsMargins(14, 14, 14, 14)
+        right_layout.setContentsMargins(16, 14, 16, 14)
         right_layout.setSpacing(10)
 
         details_title = QLabel("Детали выбранной сессии")
@@ -601,7 +601,7 @@ class MainWindow(QMainWindow):
         self.session_details.setReadOnly(True)
         right_layout.addWidget(self.session_details)
 
-        self.open_report_btn = QPushButton("Открыть / сгенерировать HTML-отчет")
+        self.open_report_btn = QPushButton("Report")
         self.open_report_btn.clicked.connect(self.open_selected_session_report)
         right_layout.addWidget(self.open_report_btn)
 
@@ -612,8 +612,8 @@ class MainWindow(QMainWindow):
     def _build_alerts_page(self) -> QWidget:
         page = QWidget()
         layout = QVBoxLayout(page)
-        layout.setContentsMargins(18, 18, 18, 18)
-        layout.setSpacing(12)
+        layout.setContentsMargins(20, 20, 20, 20)
+        layout.setSpacing(14)
 
         title = QLabel("Alerts history")
         title.setObjectName("page_title")
@@ -622,9 +622,9 @@ class MainWindow(QMainWindow):
         filters_card = QFrame()
         filters_card.setObjectName("panel_card")
         filters = QGridLayout(filters_card)
-        filters.setContentsMargins(14, 14, 14, 14)
+        filters.setContentsMargins(16, 14, 16, 14)
         filters.setHorizontalSpacing(10)
-        filters.setVerticalSpacing(8)
+        filters.setVerticalSpacing(10)
 
         self.alert_session_filter = QComboBox()
         self.alert_type_filter = QComboBox()
@@ -645,7 +645,7 @@ class MainWindow(QMainWindow):
         self.alert_to_dt.setEnabled(False)
         self.alert_period_checkbox.stateChanged.connect(self._toggle_alert_period_filters)
 
-        self.alert_refresh_btn = QPushButton("Обновить")
+        self.alert_refresh_btn = QPushButton("Refresh")
         self.alert_refresh_btn.clicked.connect(self.load_alerts_history)
         self.alert_reset_btn = QPushButton("Сбросить")
         self.alert_reset_btn.clicked.connect(self.reset_alert_filters)
@@ -672,7 +672,7 @@ class MainWindow(QMainWindow):
         table_card = QFrame()
         table_card.setObjectName("panel_card")
         table_layout = QVBoxLayout(table_card)
-        table_layout.setContentsMargins(14, 14, 14, 14)
+        table_layout.setContentsMargins(16, 14, 16, 14)
         table_layout.setSpacing(8)
 
         self.alerts_count_label = QLabel("Alerts: 0")
@@ -692,7 +692,7 @@ class MainWindow(QMainWindow):
         details_card = QFrame()
         details_card.setObjectName("panel_card")
         details_layout = QVBoxLayout(details_card)
-        details_layout.setContentsMargins(14, 14, 14, 14)
+        details_layout.setContentsMargins(16, 14, 16, 14)
         details_layout.setSpacing(8)
 
         details_title = QLabel("Детализация события")
@@ -1351,7 +1351,7 @@ Report path:
         self.settings_btn.setEnabled(True)
         self.settings_page_btn.setEnabled(True)
 
-        self.action_btn.setText("Запустить мониторинг")
+        self.action_btn.setText("Start")
         self.action_btn.setObjectName("primary_btn")
         self._refresh_widget_style(self.action_btn)
 
@@ -1393,7 +1393,7 @@ Report path:
             self.switch_page(0)
             self.is_monitoring = True
             self.current_mode = "live"
-            self.action_btn.setText("Остановить мониторинг")
+            self.action_btn.setText("Stop")
             self.action_btn.setObjectName("stop_mode")
             self._refresh_widget_style(self.action_btn)
 
@@ -1415,10 +1415,10 @@ Report path:
 
     def _make_metric_card(self, title: str, value_label: QLabel, subtitle_label: QLabel) -> QFrame:
         card = QFrame()
-        card.setObjectName("metric_card")
+        card.setObjectName("metric_card_primary" if title == "IB Score" else "metric_card")
 
         layout = QVBoxLayout(card)
-        layout.setContentsMargins(16, 14, 16, 14)
+        layout.setContentsMargins(18, 16, 18, 16)
         layout.setSpacing(6)
 
         title_label = QLabel(title)
