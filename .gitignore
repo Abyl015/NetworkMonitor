@@ -16,3 +16,5 @@ NetworkMonitor/storage/traffic_data.db
 reports/
 *.html
 rate-limits-access.md
+
+NetworkMonitor/docs/
