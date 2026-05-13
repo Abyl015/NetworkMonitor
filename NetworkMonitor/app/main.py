@@ -11,7 +11,7 @@ from collections import Counter
 from datetime import datetime, timedelta
 from pathlib import Path
 
-from PyQt6.QtCore import QDateTime, Qt, QTimer
+from PyQt6.QtCore import QDateTime, QSize, Qt, QTimer
 from PyQt6.QtGui import QColor
 from PyQt6.QtWidgets import (
     QApplication,
@@ -637,48 +637,188 @@ class MainWindow(QMainWindow):
         return page
 
     def _build_sessions_page(self):
-        layout = QHBoxLayout(self.sessions_page)
-        layout.setContentsMargins(20, 20, 20, 20)
-        layout.setSpacing(14)
+        layout = QVBoxLayout(self.sessions_page)
+        layout.setContentsMargins(22, 22, 22, 22)
+        layout.setSpacing(18)
 
-        left_card = QFrame()
-        left_card.setObjectName("panel_card")
+        header = QHBoxLayout()
+        header.setContentsMargins(0, 0, 0, 0)
+        header.setSpacing(12)
+
+        sessions_title = QLabel("РЎРµСЃСЃРёРё РјРѕРЅРёС‚РѕСЂРёРЅРіР°")
+        sessions_title.setObjectName("sessions_page_title")
+        header.addWidget(sessions_title, 1)
+
+        self.open_report_btn = QPushButton("Open/Create Report")
+        self.open_report_btn.setObjectName("primary_btn")
+        self.open_report_btn.setMinimumSize(178, 42)
+        self.open_report_btn.clicked.connect(self.open_selected_session_report)
+        header.addWidget(self.open_report_btn, 0, Qt.AlignmentFlag.AlignRight)
+        layout.addLayout(header)
+
+        body = QHBoxLayout()
+        body.setContentsMargins(0, 0, 0, 0)
+        body.setSpacing(14)
+
+        left_card = QWidget()
         left_layout = QVBoxLayout(left_card)
-        left_layout.setContentsMargins(16, 14, 16, 14)
-        left_layout.setSpacing(10)
+        left_layout.setContentsMargins(0, 0, 0, 0)
+        left_layout.setSpacing(12)
 
-        sessions_title = QLabel("История сессий")
-        sessions_title.setObjectName("section_title")
-        left_layout.addWidget(sessions_title)
+        search_row = QHBoxLayout()
+        search_row.setContentsMargins(0, 0, 0, 0)
+        search_row.setSpacing(10)
+
+        self.sessions_search = QLineEdit()
+        self.sessions_search.setObjectName("sessions_search")
+        self.sessions_search.setPlaceholderText("Search Sessions")
+        self.sessions_search.textChanged.connect(self.apply_session_filter)
+        search_row.addWidget(self.sessions_search, 1)
+
+        self.refresh_sessions_btn = QPushButton("Refresh")
+        self.refresh_sessions_btn.setObjectName("sessions_filter_btn")
+        self.refresh_sessions_btn.clicked.connect(self.load_sessions)
+        search_row.addWidget(self.refresh_sessions_btn, 0)
+        left_layout.addLayout(search_row)
 
         self.sessions_list = QListWidget()
+        self.sessions_list.setObjectName("sessions_list")
         self.sessions_list.itemClicked.connect(self.show_session_details)
         left_layout.addWidget(self.sessions_list)
 
-        self.refresh_sessions_btn = QPushButton("Refresh")
-        self.refresh_sessions_btn.clicked.connect(self.load_sessions)
-        left_layout.addWidget(self.refresh_sessions_btn)
+        right_panel = QWidget()
+        right_layout = QVBoxLayout(right_panel)
+        right_layout.setContentsMargins(0, 0, 0, 0)
+        right_layout.setSpacing(12)
 
-        right_card = QFrame()
-        right_card.setObjectName("panel_card")
-        right_layout = QVBoxLayout(right_card)
-        right_layout.setContentsMargins(16, 14, 16, 14)
-        right_layout.setSpacing(10)
+        assessment_card = QFrame()
+        assessment_card.setObjectName("session_detail_card")
+        assessment_layout = QVBoxLayout(assessment_card)
+        assessment_layout.setContentsMargins(18, 16, 18, 16)
+        assessment_layout.setSpacing(12)
 
-        details_title = QLabel("Детали выбранной сессии")
-        details_title.setObjectName("section_title")
-        right_layout.addWidget(details_title)
+        assessment_title = QLabel("Security Assessment")
+        assessment_title.setObjectName("session_card_title")
+        assessment_layout.addWidget(assessment_title)
 
-        self.session_details = QTextEdit()
-        self.session_details.setReadOnly(True)
-        right_layout.addWidget(self.session_details)
+        assessment_body = QHBoxLayout()
+        assessment_body.setContentsMargins(0, 0, 0, 0)
+        assessment_body.setSpacing(28)
 
-        self.open_report_btn = QPushButton("Report")
-        self.open_report_btn.clicked.connect(self.open_selected_session_report)
-        right_layout.addWidget(self.open_report_btn)
+        score_box = QVBoxLayout()
+        score_box.setContentsMargins(0, 0, 0, 0)
+        score_box.setSpacing(4)
+        self.session_score_value = QLabel("-")
+        self.session_score_value.setObjectName("session_score_value")
+        self.session_score_value.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.session_score_level = QLabel("-")
+        self.session_score_level.setObjectName("session_score_level")
+        self.session_score_level.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.session_score_level.setWordWrap(True)
+        score_box.addStretch(1)
+        score_box.addWidget(self.session_score_value)
+        score_box.addWidget(self.session_score_level)
+        score_box.addStretch(1)
 
-        layout.addWidget(left_card, 1)
-        layout.addWidget(right_card, 2)
+        score_frame = QFrame()
+        score_frame.setObjectName("session_score_ring")
+        score_frame.setMinimumSize(148, 148)
+        score_frame.setMaximumSize(148, 148)
+        score_frame.setLayout(score_box)
+        assessment_body.addWidget(score_frame, 0)
+
+        divider = QFrame()
+        divider.setObjectName("session_vertical_divider")
+        divider.setFrameShape(QFrame.Shape.VLine)
+        assessment_body.addWidget(divider)
+
+        badge_col = QVBoxLayout()
+        badge_col.setContentsMargins(0, 0, 0, 0)
+        badge_col.setSpacing(10)
+        self.session_threat_badge = QLabel("Threat: -")
+        self.session_incident_badge = QLabel("Incident: -")
+        self.session_confidence_badge = QLabel("Confidence: -")
+        for badge in (self.session_threat_badge, self.session_incident_badge, self.session_confidence_badge):
+            badge.setObjectName("session_assessment_badge")
+            badge.setWordWrap(True)
+            badge_col.addWidget(badge)
+        badge_col.addStretch(1)
+        assessment_body.addLayout(badge_col, 1)
+        assessment_layout.addLayout(assessment_body)
+        right_layout.addWidget(assessment_card)
+
+        explanation_card = QFrame()
+        explanation_card.setObjectName("session_detail_card")
+        explanation_layout = QVBoxLayout(explanation_card)
+        explanation_layout.setContentsMargins(18, 16, 18, 16)
+        explanation_layout.setSpacing(10)
+        explanation_title = QLabel("Explanation")
+        explanation_title.setObjectName("session_card_title")
+        self.session_explanation_label = QLabel("Р’С‹Р±РµСЂРёС‚Рµ СЃРµСЃСЃРёСЋ СЃР»РµРІР°.")
+        self.session_explanation_label.setObjectName("session_body_text")
+        self.session_explanation_label.setWordWrap(True)
+        explanation_layout.addWidget(explanation_title)
+        explanation_layout.addWidget(self.session_explanation_label)
+        right_layout.addWidget(explanation_card)
+
+        stats_card = QFrame()
+        stats_card.setObjectName("session_detail_card")
+        stats_layout = QVBoxLayout(stats_card)
+        stats_layout.setContentsMargins(18, 16, 18, 16)
+        stats_layout.setSpacing(12)
+        stats_title = QLabel("Statistics")
+        stats_title.setObjectName("session_card_title")
+        stats_layout.addWidget(stats_title)
+
+        stats_grid = QGridLayout()
+        stats_grid.setContentsMargins(0, 0, 0, 0)
+        stats_grid.setHorizontalSpacing(18)
+        stats_grid.setVerticalSpacing(8)
+        self.session_stat_labels: dict[str, QLabel] = {}
+        stat_specs = [
+            ("packets", "Packets:"),
+            ("duration", "Duration:"),
+            ("anomalies", "Anomalies:"),
+            ("ioc", "IOC matches:"),
+        ]
+        for col, (key, title) in enumerate(stat_specs):
+            stat_wrap = QVBoxLayout()
+            stat_wrap.setContentsMargins(0, 0, 0, 0)
+            stat_wrap.setSpacing(2)
+            title_label = QLabel(title)
+            title_label.setObjectName("session_stat_title")
+            value_label = QLabel("-")
+            value_label.setObjectName("session_stat_value")
+            value_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            self.session_stat_labels[key] = value_label
+            stat_wrap.addWidget(title_label, 0, Qt.AlignmentFlag.AlignCenter)
+            stat_wrap.addWidget(value_label, 0, Qt.AlignmentFlag.AlignCenter)
+            stat_widget = QWidget()
+            stat_widget.setLayout(stat_wrap)
+            stats_grid.addWidget(stat_widget, 0, col)
+            stats_grid.setColumnStretch(col, 1)
+        stats_layout.addLayout(stats_grid)
+        right_layout.addWidget(stats_card)
+
+        comparison_card = QFrame()
+        comparison_card.setObjectName("session_detail_card")
+        comparison_layout = QVBoxLayout(comparison_card)
+        comparison_layout.setContentsMargins(18, 16, 18, 16)
+        comparison_layout.setSpacing(10)
+        comparison_title = QLabel("Comparison")
+        comparison_title.setObjectName("session_card_title")
+        self.session_comparison_label = QLabel("РќРµС‚ РґР°РЅРЅС‹С… РґР»СЏ СЃСЂР°РІРЅРµРЅРёСЏ")
+        self.session_comparison_label.setObjectName("session_body_text")
+        self.session_comparison_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.session_comparison_label.setWordWrap(True)
+        comparison_layout.addWidget(comparison_title)
+        comparison_layout.addWidget(self.session_comparison_label, 1)
+        right_layout.addWidget(comparison_card, 1)
+
+        body.addWidget(left_card, 1)
+        body.addWidget(right_panel, 2)
+        layout.addLayout(body, 1)
+        self._session_rows: list[tuple] = []
         self.load_sessions()
 
     def _build_alerts_page(self) -> QWidget:
@@ -1286,28 +1426,105 @@ Description:
         self.alert_details.setText(detail)
 
     # -------- sessions --------
-    def load_sessions(self):
-        init_db()
+    def _format_session_duration(self, duration) -> str:
+        try:
+            seconds = int(duration or 0)
+        except (TypeError, ValueError):
+            seconds = 0
+        minutes, sec = divmod(seconds, 60)
+        hours, minutes = divmod(minutes, 60)
+        return f"{hours:02d}:{minutes:02d}:{sec:02d}"
+
+    def _format_session_date(self, started) -> str:
+        text = str(started or "-")
+        return text[:10] if len(text) >= 10 else text
+
+    def _session_list_text(self, row: tuple) -> str:
+        session_id, started, duration, profile, iface, score = row
+        score_text = score if score is not None else "-"
+        return f"sess-{int(session_id):03d}     {self._format_session_date(started)}\nDuration: {self._format_session_duration(duration)} | IB Score: {score_text}"
+
+    def apply_session_filter(self) -> None:
+        self.render_sessions_list()
+
+    def render_sessions_list(self) -> None:
         self.sessions_list.clear()
-        sessions = get_sessions()
-        if not sessions:
-            self.sessions_list.addItem("Сессий пока нет")
+        rows = getattr(self, "_session_rows", [])
+        query = ""
+        if hasattr(self, "sessions_search"):
+            query = self.sessions_search.text().strip().lower()
+
+        visible_rows = []
+        for row in rows:
+            session_id, started, duration, profile, iface, score = row
+            haystack = " ".join(str(part or "") for part in (session_id, started, duration, profile, iface, score)).lower()
+            if not query or query in haystack:
+                visible_rows.append(row)
+
+        if not visible_rows:
+            item = QListWidgetItem("РЎРµСЃСЃРёР№ РїРѕРєР° РЅРµС‚")
+            item.setData(Qt.ItemDataRole.UserRole, None)
+            item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsSelectable)
+            self.sessions_list.addItem(item)
+            self._clear_session_details()
             return
 
-        for s in sessions:
-            session_id, started, duration, profile, iface, score = s
-            started = started or "-"
-            profile = profile or "-"
-            iface = iface or "-"
-            duration = duration or 0
-            score = score if score is not None else "-"
-            text = f"{started} | {profile} | {iface} | {duration}s | IB={score}"
-            item = QListWidgetItem(text)
+        for row in visible_rows:
+            session_id = row[0]
+            item = QListWidgetItem(self._session_list_text(row))
             item.setData(Qt.ItemDataRole.UserRole, session_id)
+            item.setSizeHint(QSize(0, 76))
             self.sessions_list.addItem(item)
+
+        self.sessions_list.setCurrentRow(0)
+        self.show_session_details(self.sessions_list.item(0))
+
+    def _clear_session_details(self) -> None:
+        if hasattr(self, "session_score_value"):
+            self.session_score_value.setText("-")
+            self.session_score_level.setText("-")
+            self.session_threat_badge.setText("Threat: -")
+            self.session_incident_badge.setText("Incident: -")
+            self.session_confidence_badge.setText("Confidence: -")
+            self.session_explanation_label.setText("Р’С‹Р±РµСЂРёС‚Рµ СЃРµСЃСЃРёСЋ СЃР»РµРІР°.")
+            self.session_comparison_label.setText("РќРµС‚ РґР°РЅРЅС‹С… РґР»СЏ СЃСЂР°РІРЅРµРЅРёСЏ")
+            for label in self.session_stat_labels.values():
+                label.setText("-")
+
+    def load_sessions(self):
+        init_db()
+        self._session_rows = get_sessions()
+        self.render_sessions_list()
 
     def show_session_details(self, item):
         session_id = item.data(Qt.ItemDataRole.UserRole)
+        if hasattr(self, "session_score_value"):
+            if session_id is None:
+                self._clear_session_details()
+                return
+
+            s = get_session_record(session_id)
+            if not s:
+                self._clear_session_details()
+                return
+
+            previous = get_previous_session_record(session_id)
+            comparison = self._comparison_text(s, previous)
+            assessment_details = self._stored_assessment_text(s)
+            score = s.get("final_ib_score")
+
+            self.session_score_value.setText(str(score) if score is not None else "-")
+            self.session_score_level.setText(s.get("final_ib_level") or "-")
+            self.session_threat_badge.setText(f"Threat: {s.get('threat_level') or '-'}")
+            self.session_incident_badge.setText(f"Incident: {s.get('incident_probability') or '-'}")
+            self.session_confidence_badge.setText(f"Confidence: {s.get('confidence') or '-'}")
+            self.session_explanation_label.setText(s.get("summary_text") or assessment_details or "-")
+            self.session_comparison_label.setText(comparison or "РќРµС‚ РґР°РЅРЅС‹С… РґР»СЏ СЃСЂР°РІРЅРµРЅРёСЏ")
+            self.session_stat_labels["packets"].setText(f"{int(s.get('total_packets') or 0):,}")
+            self.session_stat_labels["duration"].setText(self._format_session_duration(s.get("duration_sec")))
+            self.session_stat_labels["anomalies"].setText(f"{int(s.get('total_anomalies') or 0):,}")
+            self.session_stat_labels["ioc"].setText(f"{int(s.get('total_ioc_matches') or 0):,}")
+            return
         if session_id is None:
             self.session_details.setText("Нет данных.")
             return

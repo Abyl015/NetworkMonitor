@@ -99,6 +99,25 @@ QFrame#comparison_card {
     border-radius: 10px;
 }
 
+QFrame#session_detail_card {
+    background-color: #ffffff;
+    border: 1px solid #cfd8e3;
+    border-radius: 10px;
+}
+
+QFrame#session_score_ring {
+    background-color: #ffffff;
+    border: 10px solid #2f6fdf;
+    border-radius: 74px;
+}
+
+QFrame#session_vertical_divider {
+    background-color: #d8dee8;
+    border: none;
+    min-width: 1px;
+    max-width: 1px;
+}
+
 QFrame#dashboard_assessment_section {
     border: 1px solid #d1d5db;
 }
@@ -148,6 +167,13 @@ QLabel#page_subtitle {
     padding: 0;
 }
 
+QLabel#sessions_page_title {
+    font-size: 28px;
+    font-weight: 800;
+    color: #111827;
+    padding: 0;
+}
+
 QLabel#section_title {
     font-size: 14px;
     font-weight: 700;
@@ -160,6 +186,13 @@ QLabel#dashboard_section_title {
     font-weight: 700;
     color: #020617;
     padding: 0 0 0 1px;
+}
+
+QLabel#session_card_title {
+    color: #0f172a;
+    font-size: 18px;
+    font-weight: 700;
+    padding: 0;
 }
 
 QLabel#control_label {
@@ -219,6 +252,43 @@ QLabel#finding_item {
     font-size: 12px;
     padding-top: 1px;
     padding-bottom: 1px;
+}
+
+QLabel#session_score_value {
+    color: #24364b;
+    font-size: 34px;
+    font-weight: 500;
+    padding: 0;
+}
+
+QLabel#session_score_level,
+QLabel#session_body_text {
+    color: #111827;
+    font-size: 14px;
+    padding: 0;
+}
+
+QLabel#session_assessment_badge {
+    background-color: #eef2f7;
+    color: #111827;
+    border: 1px solid #e5e7eb;
+    border-radius: 14px;
+    padding: 6px 12px;
+    font-size: 14px;
+    font-weight: 700;
+}
+
+QLabel#session_stat_title {
+    color: #111827;
+    font-size: 14px;
+    padding: 0;
+}
+
+QLabel#session_stat_value {
+    color: #020617;
+    font-size: 28px;
+    font-weight: 500;
+    padding: 0;
 }
 
 QLabel#status_chip,
@@ -299,6 +369,12 @@ QDateTimeEdit {
     padding: 0 10px;
 }
 
+QLineEdit#sessions_search {
+    min-height: 38px;
+    border-radius: 8px;
+    font-size: 14px;
+}
+
 QComboBox:disabled,
 QLineEdit:disabled,
 QDateTimeEdit:disabled {
@@ -331,6 +407,33 @@ QPlainTextEdit#log_panel {
 
 QListWidget::item {
     padding: 6px 4px;
+}
+
+QListWidget#sessions_list {
+    background-color: transparent;
+    border: none;
+    padding: 0;
+}
+
+QListWidget#sessions_list::item {
+    background-color: #ffffff;
+    color: #0f172a;
+    border: 1px solid #d6dee8;
+    border-radius: 9px;
+    padding: 12px 16px;
+    margin-bottom: 10px;
+    font-size: 15px;
+}
+
+QListWidget#sessions_list::item:selected {
+    background-color: #dff2ff;
+    color: #020617;
+    border: 2px solid #2b74c7;
+}
+
+QPushButton#sessions_filter_btn {
+    min-height: 38px;
+    border-radius: 8px;
 }
 
 QListWidget::item:selected {
