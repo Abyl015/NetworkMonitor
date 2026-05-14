@@ -123,7 +123,7 @@ class MainWindow(QMainWindow):
         self.sidebar_toggle_btn = QPushButton("☰")
         self.sidebar_toggle_btn.setObjectName("sidebar_toggle_btn")
         self.sidebar_toggle_btn.setText("<<")
-        self.sidebar_toggle_btn.setToolTip("Toggle sidebar")
+        self.sidebar_toggle_btn.setToolTip("Свернуть или развернуть меню")
         self.sidebar_toggle_btn.clicked.connect(self.toggle_sidebar)
         nav_layout.addWidget(self.sidebar_toggle_btn)
 
@@ -137,27 +137,27 @@ class MainWindow(QMainWindow):
         self.nav_subtitle = nav_subtitle
         nav_layout.addWidget(nav_subtitle)
 
-        self.main_nav_btn = QPushButton("Dashboard")
+        self.main_nav_btn = QPushButton("Мониторинг")
         self.main_nav_btn.setCheckable(True)
         self.main_nav_btn.clicked.connect(lambda: self.switch_page(0))
         nav_layout.addWidget(self.main_nav_btn)
 
-        self.pcap_nav_btn = QPushButton("PCAP")
+        self.pcap_nav_btn = QPushButton("PCAP-анализ")
         self.pcap_nav_btn.setCheckable(True)
         self.pcap_nav_btn.clicked.connect(lambda: self.switch_page(1))
         nav_layout.addWidget(self.pcap_nav_btn)
 
-        self.settings_nav_btn = QPushButton("Settings")
+        self.settings_nav_btn = QPushButton("Настройки")
         self.settings_nav_btn.setCheckable(True)
         self.settings_nav_btn.clicked.connect(lambda: self.switch_page(2))
         nav_layout.addWidget(self.settings_nav_btn)
 
-        self.sessions_nav_btn = QPushButton("Sessions")
+        self.sessions_nav_btn = QPushButton("Сессии")
         self.sessions_nav_btn.setCheckable(True)
         self.sessions_nav_btn.clicked.connect(lambda: self.switch_page(3))
         nav_layout.addWidget(self.sessions_nav_btn)
 
-        self.alerts_nav_btn = QPushButton("Alerts")
+        self.alerts_nav_btn = QPushButton("Алерты")
         self.alerts_nav_btn.setCheckable(True)
         self.alerts_nav_btn.clicked.connect(lambda: self.switch_page(4))
         nav_layout.addWidget(self.alerts_nav_btn)
@@ -227,10 +227,10 @@ class MainWindow(QMainWindow):
         top_grid.setHorizontalSpacing(8)
         top_grid.setVerticalSpacing(8)
 
-        self.page_title = QLabel("Панель мониторинга сети")
+        self.page_title = QLabel("Операционный мониторинг")
         self.page_title.setObjectName("page_title")
 
-        self.page_subtitle = QLabel("Live traffic, incidents, IOC и оценка ИБ в реальном времени")
+        self.page_subtitle = QLabel("Живой трафик, инциденты, IOC и оценка ИБ в реальном времени")
         self.page_subtitle.setObjectName("page_subtitle")
 
         self.status_label = QLabel("Статус: ожидание запуска")
@@ -261,16 +261,16 @@ class MainWindow(QMainWindow):
         iface_wrap = QWidget()
         iface_wrap.setLayout(iface_box)
 
-        self.refresh_ifaces_btn = QPushButton("Refresh")
+        self.refresh_ifaces_btn = QPushButton("Обновить")
         self.refresh_ifaces_btn.clicked.connect(self.load_interfaces_to_combo)
 
-        self.settings_btn = QPushButton("Profiles")
+        self.settings_btn = QPushButton("Профили")
         self.settings_btn.clicked.connect(self.open_settings)
 
-        self.export_btn = QPushButton("Report")
+        self.export_btn = QPushButton("Отчёт")
         self.export_btn.clicked.connect(self.export_report)
 
-        self.action_btn = QPushButton("Start")
+        self.action_btn = QPushButton("Старт")
         self.action_btn.setObjectName("primary_btn")
         self.action_btn.clicked.connect(self.toggle_monitoring)
 
@@ -320,7 +320,7 @@ class MainWindow(QMainWindow):
         page_layout.addLayout(cards_row, 0)
 
         # ---------- SECURITY ASSESSMENT ----------
-        assessment_title = QLabel("SECURITY ASSESSMENT")
+        assessment_title = QLabel("Оценка безопасности")
         assessment_title.setObjectName("dashboard_section_title")
         page_layout.addWidget(assessment_title, 0)
 
@@ -417,7 +417,7 @@ class MainWindow(QMainWindow):
         risk_layout = QVBoxLayout(risk_panel)
         risk_layout.setContentsMargins(12, 10, 12, 10)
         risk_layout.setSpacing(6)
-        risk_title = QLabel("Risk breakdown")
+        risk_title = QLabel("Состав риска")
         risk_title.setObjectName("assessment_subtitle")
         risk_layout.addWidget(risk_title)
         self.risk_labels: list[QLabel] = []
@@ -436,7 +436,7 @@ class MainWindow(QMainWindow):
         findings_layout = QVBoxLayout(findings_panel)
         findings_layout.setContentsMargins(12, 10, 12, 10)
         findings_layout.setSpacing(6)
-        findings_title = QLabel("Key findings")
+        findings_title = QLabel("Ключевые выводы")
         findings_title.setObjectName("assessment_subtitle")
         findings_layout.addWidget(findings_title)
         self.finding_labels: list[QLabel] = []
@@ -464,7 +464,7 @@ class MainWindow(QMainWindow):
 
         page_layout.addWidget(summary_card, 0)
 
-        operational_title = QLabel("OPERATIONAL MONITORING")
+        operational_title = QLabel("Операционный мониторинг")
         operational_title.setObjectName("dashboard_section_title")
         page_layout.addWidget(operational_title, 0)
 
@@ -574,26 +574,26 @@ class MainWindow(QMainWindow):
         header.setContentsMargins(0, 0, 0, 0)
         header.setSpacing(12)
 
-        title = QLabel("PCAP Analysis")
+        title = QLabel("PCAP-анализ")
         title.setObjectName("pcap_page_title")
         header.addWidget(title, 1)
 
-        self.pcap_btn = QPushButton("Open PCAP")
+        self.pcap_btn = QPushButton("Открыть PCAP")
         self.pcap_btn.setObjectName("pcap_action_btn")
         self.pcap_btn.clicked.connect(self.open_pcap)
         header.addWidget(self.pcap_btn)
 
-        self.open_main_btn = QPushButton("Analyze")
+        self.open_main_btn = QPushButton("Анализ")
         self.open_main_btn.setObjectName("pcap_action_btn")
         self.open_main_btn.clicked.connect(self.open_pcap)
         header.addWidget(self.open_main_btn)
 
-        self.pcap_export_btn = QPushButton("Export Report")
+        self.pcap_export_btn = QPushButton("Экспорт отчёта")
         self.pcap_export_btn.setObjectName("pcap_action_btn")
         self.pcap_export_btn.clicked.connect(self.export_report)
         header.addWidget(self.pcap_export_btn)
 
-        self.pcap_clear_btn = QPushButton("Clear")
+        self.pcap_clear_btn = QPushButton("Очистить")
         self.pcap_clear_btn.setObjectName("pcap_action_btn")
         self.pcap_clear_btn.clicked.connect(self.clear_pcap_view)
         header.addWidget(self.pcap_clear_btn)
@@ -604,7 +604,7 @@ class MainWindow(QMainWindow):
         summary_layout = QVBoxLayout(summary_card)
         summary_layout.setContentsMargins(14, 12, 14, 12)
         summary_layout.setSpacing(10)
-        summary_title = QLabel("PCAP File Summary")
+        summary_title = QLabel("Сводка PCAP-файла")
         summary_title.setObjectName("pcap_card_title")
         summary_layout.addWidget(summary_title)
 
@@ -617,10 +617,10 @@ class MainWindow(QMainWindow):
         self.pcap_packet_count_label = QLabel("0")
         self.pcap_duration_label = QLabel("00:00:00")
         summary_items = [
-            ("File Name:", self.pcap_file_name_label),
-            ("Size:", self.pcap_file_size_label),
-            ("Packets:", self.pcap_packet_count_label),
-            ("Duration:", self.pcap_duration_label),
+            ("Имя файла:", self.pcap_file_name_label),
+            ("Размер:", self.pcap_file_size_label),
+            ("Пакеты:", self.pcap_packet_count_label),
+            ("Длительность:", self.pcap_duration_label),
         ]
         for col, (label_text, value_label) in enumerate(summary_items):
             label = QLabel(label_text)
@@ -638,7 +638,7 @@ class MainWindow(QMainWindow):
         assessment_layout = QVBoxLayout(assessment_card)
         assessment_layout.setContentsMargins(14, 12, 14, 12)
         assessment_layout.setSpacing(10)
-        assessment_title = QLabel("Security Assessment")
+        assessment_title = QLabel("Оценка безопасности")
         assessment_title.setObjectName("pcap_card_title")
         assessment_layout.addWidget(assessment_title)
 
@@ -674,7 +674,7 @@ class MainWindow(QMainWindow):
         protocol_layout = QVBoxLayout(protocol_card)
         protocol_layout.setContentsMargins(14, 12, 14, 12)
         protocol_layout.setSpacing(8)
-        protocol_title = QLabel("Protocol Distribution")
+        protocol_title = QLabel("Распределение протоколов")
         protocol_title.setObjectName("pcap_card_title")
         protocol_layout.addWidget(protocol_title)
         self.pcap_protocol_list = QListWidget()
@@ -690,7 +690,7 @@ class MainWindow(QMainWindow):
         top_ips_layout = QVBoxLayout(top_ips_card)
         top_ips_layout.setContentsMargins(14, 12, 14, 12)
         top_ips_layout.setSpacing(8)
-        top_ips_title = QLabel("Top Source/Destination IPs")
+        top_ips_title = QLabel("Топ IP источников/назначений")
         top_ips_title.setObjectName("pcap_card_title")
         top_ips_layout.addWidget(top_ips_title)
         self.pcap_stats_list = QListWidget()
@@ -706,7 +706,7 @@ class MainWindow(QMainWindow):
         conversations_layout = QVBoxLayout(conversations_card)
         conversations_layout.setContentsMargins(14, 12, 14, 12)
         conversations_layout.setSpacing(8)
-        conversations_title = QLabel("Suspicious Conversations")
+        conversations_title = QLabel("Подозрительные соединения")
         conversations_title.setObjectName("pcap_card_title")
         conversations_layout.addWidget(conversations_title)
         self.pcap_conversations_list = QListWidget()
@@ -726,12 +726,12 @@ class MainWindow(QMainWindow):
         alerts_layout = QVBoxLayout(alerts_card)
         alerts_layout.setContentsMargins(14, 12, 14, 12)
         alerts_layout.setSpacing(8)
-        alerts_title = QLabel("Detailed Alerts")
+        alerts_title = QLabel("Детальные алерты")
         alerts_title.setObjectName("pcap_card_title")
         alerts_layout.addWidget(alerts_title)
         self.pcap_alerts_table = QTableWidget(0, 4)
         self.pcap_alerts_table.setObjectName("pcap_alerts_table")
-        self.pcap_alerts_table.setHorizontalHeaderLabels(["Time", "Type", "Verdict", "Description"])
+        self.pcap_alerts_table.setHorizontalHeaderLabels(["Время", "Тип", "Вердикт", "Описание"])
         self.pcap_alerts_table.verticalHeader().setVisible(False)
         self.pcap_alerts_table.horizontalHeader().setStretchLastSection(True)
         self.pcap_alerts_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
@@ -750,7 +750,7 @@ class MainWindow(QMainWindow):
         log_layout = QVBoxLayout(log_card)
         log_layout.setContentsMargins(14, 12, 14, 12)
         log_layout.setSpacing(8)
-        log_title = QLabel("Analysis Log")
+        log_title = QLabel("Лог анализа")
         log_title.setObjectName("pcap_card_title")
         log_layout.addWidget(log_title)
         self.pcap_log_area = QTextEdit()
@@ -766,10 +766,10 @@ class MainWindow(QMainWindow):
         timeline_layout = QVBoxLayout(timeline_card)
         timeline_layout.setContentsMargins(14, 12, 14, 12)
         timeline_layout.setSpacing(8)
-        timeline_title = QLabel("Traffic Timeline")
+        timeline_title = QLabel("Хронология трафика")
         timeline_title.setObjectName("pcap_card_title")
         timeline_layout.addWidget(timeline_title)
-        self.pcap_plot = PlotWidget("Packets/sec")
+        self.pcap_plot = PlotWidget("Пакеты/сек")
         self.pcap_plot.setMinimumHeight(180)
         timeline_layout.addWidget(self.pcap_plot)
         bottom_grid.addWidget(timeline_card, 0, 1)
@@ -833,7 +833,7 @@ class MainWindow(QMainWindow):
         layout.setContentsMargins(18, 18, 18, 18)
         layout.setSpacing(14)
 
-        title = QLabel("System Settings and Profiles")
+        title = QLabel("Настройки системы и профили")
         title.setObjectName("settings_page_title")
         layout.addWidget(title)
 
@@ -841,13 +841,13 @@ class MainWindow(QMainWindow):
         body.setContentsMargins(0, 0, 0, 0)
         body.setSpacing(14)
 
-        profiles_card, profiles_layout = self._make_settings_card("Monitoring Profiles")
+        profiles_card, profiles_layout = self._make_settings_card("Профили мониторинга")
         profiles_card.setMinimumWidth(270)
         self.settings_profiles_list = QListWidget()
         self.settings_profiles_list.setObjectName("settings_profile_list")
         profiles_layout.addWidget(self.settings_profiles_list, 1)
 
-        self.settings_page_btn = QPushButton("New Profile")
+        self.settings_page_btn = QPushButton("Новый профиль")
         self.settings_page_btn.setObjectName("settings_primary_action")
         self.settings_page_btn.clicked.connect(self.open_settings)
         profiles_layout.addWidget(self.settings_page_btn)
@@ -858,34 +858,34 @@ class MainWindow(QMainWindow):
         center_layout.setContentsMargins(0, 0, 0, 0)
         center_layout.setSpacing(10)
 
-        monitoring_card, monitoring_layout = self._make_settings_card("Monitoring Profile")
+        monitoring_card, monitoring_layout = self._make_settings_card("Профиль мониторинга")
         monitoring_grid = QGridLayout()
         monitoring_grid.setContentsMargins(0, 0, 0, 0)
         monitoring_grid.setHorizontalSpacing(18)
         monitoring_grid.setVerticalSpacing(8)
         self.settings_interface_lbl = self._settings_field_label("-")
         self.sample_factor_lbl = self._settings_field_label("-")
-        self.settings_live_lbl = self._settings_toggle_label("ON", True)
-        self.settings_dpi_lbl = self._settings_toggle_label("ON", True)
-        monitoring_grid.addWidget(self._settings_value_row("Network Interface", self.settings_interface_lbl), 0, 0)
-        monitoring_grid.addWidget(self._settings_value_row("Sampling Rate", self.sample_factor_lbl), 0, 1)
-        monitoring_grid.addWidget(self._settings_value_row("Live Monitoring", self.settings_live_lbl), 1, 0)
-        monitoring_grid.addWidget(self._settings_value_row("Deep Packet Inspection", self.settings_dpi_lbl), 1, 1)
+        self.settings_live_lbl = self._settings_toggle_label("Вкл.", True)
+        self.settings_dpi_lbl = self._settings_toggle_label("Вкл.", True)
+        monitoring_grid.addWidget(self._settings_value_row("Сетевой интерфейс", self.settings_interface_lbl), 0, 0)
+        monitoring_grid.addWidget(self._settings_value_row("Частота sampling", self.sample_factor_lbl), 0, 1)
+        monitoring_grid.addWidget(self._settings_value_row("Живой мониторинг", self.settings_live_lbl), 1, 0)
+        monitoring_grid.addWidget(self._settings_value_row("Глубокая проверка пакетов", self.settings_dpi_lbl), 1, 1)
         monitoring_layout.addLayout(monitoring_grid)
         center_layout.addWidget(monitoring_card)
 
-        detection_card, detection_layout = self._make_settings_card("Detection Settings")
-        self.settings_rule_lbl = QLabel("Standard      Advanced      Experimental")
+        detection_card, detection_layout = self._make_settings_card("Настройки обнаружения")
+        self.settings_rule_lbl = QLabel("Стандартный      Расширенный      Экспериментальный")
         self.settings_rule_lbl.setObjectName("settings_segmented")
-        self.ml_status_lbl = self._settings_slider_label("ML Sensitivity")
-        self.settings_anom_lbl = self._settings_slider_label("Anomaly Threshold")
-        detection_layout.addWidget(self._settings_value_row("Rule Engine", self.settings_rule_lbl))
-        detection_layout.addWidget(self._settings_value_row("ML Sensitivity", self.ml_status_lbl))
-        detection_layout.addWidget(self._settings_value_row("Anomaly Threshold", self.settings_anom_lbl))
+        self.ml_status_lbl = self._settings_slider_label("Чувствительность ML")
+        self.settings_anom_lbl = self._settings_slider_label("Порог аномалий")
+        detection_layout.addWidget(self._settings_value_row("Движок правил", self.settings_rule_lbl))
+        detection_layout.addWidget(self._settings_value_row("Чувствительность ML", self.ml_status_lbl))
+        detection_layout.addWidget(self._settings_value_row("Порог аномалий", self.settings_anom_lbl))
         center_layout.addWidget(detection_card)
 
-        ioc_card, ioc_layout = self._make_settings_card("IOC Sources")
-        self.settings_ioc_path_lbl = self._settings_field_label("local IOC lists")
+        ioc_card, ioc_layout = self._make_settings_card("Источники IOC")
+        self.settings_ioc_path_lbl = self._settings_field_label("локальные списки IOC")
         self.ioc_count_lbl = self._settings_field_label("IOC: -")
         self.settings_feeds_lbl = QLabel("AlienVault   MISP")
         self.settings_feeds_lbl.setObjectName("settings_tags")
@@ -893,36 +893,36 @@ class MainWindow(QMainWindow):
         ioc_source_layout = QHBoxLayout(ioc_source_row)
         ioc_source_layout.setContentsMargins(0, 0, 0, 0)
         ioc_source_layout.setSpacing(10)
-        ioc_source_label = QLabel("IP/Domain Blocklist")
+        ioc_source_label = QLabel("Блоклист IP/доменов")
         ioc_source_label.setObjectName("settings_label")
-        self.settings_ioc_import_btn = QPushButton("Import")
+        self.settings_ioc_import_btn = QPushButton("Импорт")
         self.settings_ioc_import_btn.setObjectName("settings_secondary_action")
         self.settings_ioc_import_btn.setEnabled(False)
         ioc_source_layout.addWidget(ioc_source_label, 1)
         ioc_source_layout.addWidget(self.settings_ioc_path_lbl, 2)
         ioc_source_layout.addWidget(self.settings_ioc_import_btn, 0)
         ioc_layout.addWidget(ioc_source_row)
-        ioc_layout.addWidget(self._settings_value_row("IOC Counters", self.ioc_count_lbl))
-        ioc_layout.addWidget(self._settings_value_row("Threat Intelligence Feeds", self.settings_feeds_lbl))
+        ioc_layout.addWidget(self._settings_value_row("Счётчики IOC", self.ioc_count_lbl))
+        ioc_layout.addWidget(self._settings_value_row("Источники Threat Intelligence", self.settings_feeds_lbl))
         center_layout.addWidget(ioc_card)
 
-        report_card, report_layout = self._make_settings_card("Report Settings")
+        report_card, report_layout = self._make_settings_card("Настройки отчёта")
         self.settings_report_lbl = self._settings_field_label("HTML")
-        self.settings_report_options_lbl = QLabel("Include incidents  |  Include IOC matches  |  Include raw logs: off")
+        self.settings_report_options_lbl = QLabel("Инциденты включены  |  IOC совпадения включены  |  Сырые логи выкл.")
         self.settings_report_options_lbl.setObjectName("settings_checks")
-        report_layout.addWidget(self._settings_value_row("Default Format", self.settings_report_lbl))
-        report_layout.addWidget(self._settings_value_row("Included Sections", self.settings_report_options_lbl))
+        report_layout.addWidget(self._settings_value_row("Формат по умолчанию", self.settings_report_lbl))
+        report_layout.addWidget(self._settings_value_row("Разделы отчёта", self.settings_report_options_lbl))
         center_layout.addWidget(report_card)
 
-        storage_card, storage_layout = self._make_settings_card("Database & Storage")
+        storage_card, storage_layout = self._make_settings_card("База данных и хранилище")
         self.settings_db_path_lbl = self._settings_field_label("-")
         self.settings_db_counts_lbl = self._settings_slider_label("-")
-        storage_layout.addWidget(self._settings_value_row("Database Path", self.settings_db_path_lbl))
-        storage_layout.addWidget(self._settings_value_row("Stored Records", self.settings_db_counts_lbl))
+        storage_layout.addWidget(self._settings_value_row("Путь к базе", self.settings_db_path_lbl))
+        storage_layout.addWidget(self._settings_value_row("Записи", self.settings_db_counts_lbl))
         center_layout.addWidget(storage_card)
         body.addWidget(center, 2)
 
-        summary_card, summary_layout = self._make_settings_card("Active Profile Status: Default")
+        summary_card, summary_layout = self._make_settings_card("Статус активного профиля")
         summary_card.setObjectName("settings_status_card")
         summary_card.setMinimumWidth(260)
         self.settings_status_title_lbl = summary_layout.itemAt(0).widget()
@@ -931,14 +931,14 @@ class MainWindow(QMainWindow):
         self.settings_rules_count_lbl = QLabel("-")
         self.settings_model_lbl = QLabel("-")
         self.settings_updated_lbl = QLabel("-")
-        self.active_profile_status_lbl = QLabel("Status:\nActive & Stable")
+        self.active_profile_status_lbl = QLabel("Статус:\nАктивен и стабилен")
         self.active_profile_status_lbl.setObjectName("settings_status_good")
 
-        summary_layout.addWidget(self._settings_value_row("Interface", self.profile_name_lbl))
-        summary_layout.addWidget(self._settings_value_row("Profile File", self.settings_profile_file_lbl))
-        summary_layout.addWidget(self._settings_value_row("Rule Count", self.settings_rules_count_lbl))
-        summary_layout.addWidget(self._settings_value_row("ML Model", self.settings_model_lbl))
-        summary_layout.addWidget(self._settings_value_row("Last Update", self.settings_updated_lbl))
+        summary_layout.addWidget(self._settings_value_row("Интерфейс", self.profile_name_lbl))
+        summary_layout.addWidget(self._settings_value_row("Файл профиля", self.settings_profile_file_lbl))
+        summary_layout.addWidget(self._settings_value_row("Правила", self.settings_rules_count_lbl))
+        summary_layout.addWidget(self._settings_value_row("ML-модель", self.settings_model_lbl))
+        summary_layout.addWidget(self._settings_value_row("Последнее обновление", self.settings_updated_lbl))
         summary_layout.addWidget(self.active_profile_status_lbl)
         summary_layout.addStretch(1)
         body.addWidget(summary_card, 1)
@@ -968,7 +968,7 @@ class MainWindow(QMainWindow):
         info_layout.addWidget(self.ioc_count_lbl, 1, 1)
         layout.addWidget(info_card)
 
-        self.settings_page_btn = QPushButton("Profiles")
+        self.settings_page_btn = QPushButton("Профили")
         self.settings_page_btn.clicked.connect(self.open_settings)
         layout.addWidget(self.settings_page_btn)
         layout.addStretch(1)
@@ -984,7 +984,7 @@ class MainWindow(QMainWindow):
         header.setSpacing(12)
 
         sessions_title = QLabel()
-        sessions_title.setText("Сессии мониторинга")
+        sessions_title.setText("Сессии")
         sessions_title.setObjectName("sessions_page_title")
 
         header_text = QVBoxLayout()
@@ -1020,11 +1020,11 @@ class MainWindow(QMainWindow):
 
         self.sessions_search = QLineEdit()
         self.sessions_search.setObjectName("sessions_search")
-        self.sessions_search.setPlaceholderText("Search Sessions")
+        self.sessions_search.setPlaceholderText("Поиск сессий")
         self.sessions_search.textChanged.connect(self.apply_session_filter)
         search_row.addWidget(self.sessions_search, 1)
 
-        self.refresh_sessions_btn = QPushButton("Refresh")
+        self.refresh_sessions_btn = QPushButton("Обновить")
         self.refresh_sessions_btn.setObjectName("sessions_filter_btn")
         self.refresh_sessions_btn.clicked.connect(self.load_sessions)
         search_row.addWidget(self.refresh_sessions_btn, 0)
@@ -1046,7 +1046,7 @@ class MainWindow(QMainWindow):
         assessment_layout.setContentsMargins(18, 16, 18, 16)
         assessment_layout.setSpacing(12)
 
-        assessment_title = QLabel("Security Assessment")
+        assessment_title = QLabel("Оценка безопасности")
         assessment_title.setObjectName("session_card_title")
         assessment_layout.addWidget(assessment_title)
 
@@ -1084,9 +1084,9 @@ class MainWindow(QMainWindow):
         badge_col = QVBoxLayout()
         badge_col.setContentsMargins(0, 0, 0, 0)
         badge_col.setSpacing(10)
-        self.session_threat_badge = QLabel("Threat: -")
-        self.session_incident_badge = QLabel("Incident: -")
-        self.session_confidence_badge = QLabel("Confidence: -")
+        self.session_threat_badge = QLabel("Угроза: -")
+        self.session_incident_badge = QLabel("Инцидент: -")
+        self.session_confidence_badge = QLabel("Достоверность: -")
         for badge in (self.session_threat_badge, self.session_incident_badge, self.session_confidence_badge):
             badge.setObjectName("session_assessment_badge")
             badge.setWordWrap(True)
@@ -1101,7 +1101,7 @@ class MainWindow(QMainWindow):
         explanation_layout = QVBoxLayout(explanation_card)
         explanation_layout.setContentsMargins(18, 16, 18, 16)
         explanation_layout.setSpacing(10)
-        explanation_title = QLabel("Explanation")
+        explanation_title = QLabel("Объяснение")
         explanation_title.setObjectName("session_card_title")
         self.session_explanation_label = QLabel("Выберите сессию слева.")
         self.session_explanation_label.setObjectName("session_body_text")
@@ -1115,7 +1115,7 @@ class MainWindow(QMainWindow):
         stats_layout = QVBoxLayout(stats_card)
         stats_layout.setContentsMargins(18, 16, 18, 16)
         stats_layout.setSpacing(12)
-        stats_title = QLabel("Statistics")
+        stats_title = QLabel("Статистика")
         stats_title.setObjectName("session_card_title")
         stats_layout.addWidget(stats_title)
 
@@ -1125,10 +1125,10 @@ class MainWindow(QMainWindow):
         stats_grid.setVerticalSpacing(8)
         self.session_stat_labels: dict[str, QLabel] = {}
         stat_specs = [
-            ("packets", "Packets:"),
-            ("duration", "Duration:"),
-            ("anomalies", "Anomalies:"),
-            ("ioc", "IOC matches:"),
+            ("packets", "Пакеты:"),
+            ("duration", "Длительность:"),
+            ("anomalies", "Аномалии:"),
+            ("ioc", "IOC совпадения:"),
         ]
         for col, (key, title) in enumerate(stat_specs):
             stat_wrap = QVBoxLayout()
@@ -1154,7 +1154,7 @@ class MainWindow(QMainWindow):
         comparison_layout = QVBoxLayout(comparison_card)
         comparison_layout.setContentsMargins(18, 16, 18, 16)
         comparison_layout.setSpacing(10)
-        comparison_title = QLabel("Comparison")
+        comparison_title = QLabel("Сравнение")
         comparison_title.setObjectName("session_card_title")
         self.session_comparison_label = QLabel("Нет данных для сравнения")
         self.session_comparison_label.setObjectName("session_body_text")
@@ -1182,7 +1182,7 @@ class MainWindow(QMainWindow):
         header_text = QVBoxLayout()
         header_text.setContentsMargins(0, 0, 0, 0)
         header_text.setSpacing(2)
-        title = QLabel("Журнал алертов")
+        title = QLabel("Алерты")
         title.setObjectName("alerts_page_title")
         subtitle = QLabel("Все зафиксированные события безопасности")
         subtitle.setObjectName("alerts_page_subtitle")
@@ -1214,7 +1214,7 @@ class MainWindow(QMainWindow):
         self.alert_search_input.setObjectName("alerts_search_input")
         self.alert_search_input.setMinimumWidth(220)
         self.alert_search_input.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-        self.alert_search_input.setPlaceholderText("Search alerts, IPs, or descriptions...")
+        self.alert_search_input.setPlaceholderText("Поиск алертов, IP или описаний...")
 
         self.alert_period_checkbox = QCheckBox("Период")
         self.alert_period_checkbox.setObjectName("alerts_period_checkbox")
@@ -1236,7 +1236,7 @@ class MainWindow(QMainWindow):
         self.alert_to_dt.setEnabled(False)
         self.alert_period_checkbox.stateChanged.connect(self._toggle_alert_period_filters)
 
-        self.alert_refresh_btn = QPushButton("Refresh")
+        self.alert_refresh_btn = QPushButton("Обновить")
         self.alert_refresh_btn.setObjectName("alerts_filter_button")
         self.alert_refresh_btn.setFixedWidth(96)
         self.alert_refresh_btn.clicked.connect(self.load_alerts_history)
@@ -1283,7 +1283,7 @@ class MainWindow(QMainWindow):
         table_layout.setContentsMargins(16, 14, 16, 16)
         table_layout.setSpacing(10)
 
-        self.alerts_count_label = QLabel("Alerts: 0")
+        self.alerts_count_label = QLabel("Алерты: 0")
         self.alerts_count_label.setObjectName("alerts_table_title")
         table_layout.addWidget(self.alerts_count_label)
 
@@ -1319,7 +1319,7 @@ class MainWindow(QMainWindow):
         summary_layout = QVBoxLayout(summary_card)
         summary_layout.setContentsMargins(16, 14, 16, 14)
         summary_layout.setSpacing(8)
-        self.alert_summary_title = QLabel("Alert Summary")
+        self.alert_summary_title = QLabel("Детали алерта")
         self.alert_summary_title.setObjectName("alerts_card_title")
         self.alert_summary_verdict = QLabel("UNKNOWN")
         self.alert_summary_verdict.setObjectName("verdict_badge_unknown")
@@ -1327,9 +1327,9 @@ class MainWindow(QMainWindow):
         self.alert_summary_time.setObjectName("alerts_body_text")
         self.alert_summary_type = QLabel("-")
         self.alert_summary_type.setObjectName("alerts_body_text")
-        self.alert_summary_source = QLabel("Source: -")
+        self.alert_summary_source = QLabel("Источник: -")
         self.alert_summary_source.setObjectName("alerts_body_text")
-        self.alert_summary_destination = QLabel("Destination: -")
+        self.alert_summary_destination = QLabel("Назначение: -")
         self.alert_summary_destination.setObjectName("alerts_body_text")
         self.alert_summary_description = QLabel("-")
         self.alert_summary_description.setObjectName("alerts_body_text")
@@ -1352,7 +1352,7 @@ class MainWindow(QMainWindow):
         detail_section_layout = QVBoxLayout(detail_section)
         detail_section_layout.setContentsMargins(16, 14, 16, 14)
         detail_section_layout.setSpacing(8)
-        details_title = QLabel("ПОДРОБНОСТИ")
+        details_title = QLabel("Подробности")
         details_title.setObjectName("alerts_card_title")
         detail_section_layout.addWidget(details_title)
 
@@ -1368,7 +1368,7 @@ class MainWindow(QMainWindow):
         linked_layout = QVBoxLayout(linked_card)
         linked_layout.setContentsMargins(16, 14, 16, 14)
         linked_layout.setSpacing(8)
-        linked_title = QLabel("Linked Session Assessment")
+        linked_title = QLabel("Связанная оценка сессии")
         linked_title.setObjectName("alerts_card_title")
         self.linked_session_label = QLabel("Нет связанной оценки сессии")
         self.linked_session_label.setObjectName("alerts_body_text")
@@ -1398,11 +1398,11 @@ class MainWindow(QMainWindow):
 
     def _nav_button_specs(self):
         return [
-            (self.main_nav_btn, "Dashboard", "D", "Dashboard"),
-            (self.pcap_nav_btn, "PCAP", "P", "PCAP"),
-            (self.settings_nav_btn, "Settings", "Cfg", "Settings"),
-            (self.sessions_nav_btn, "Sessions", "Ses", "Sessions"),
-            (self.alerts_nav_btn, "Alerts", "Al", "Alerts"),
+            (self.main_nav_btn, "Мониторинг", "М", "Мониторинг"),
+            (self.pcap_nav_btn, "PCAP-анализ", "P", "PCAP-анализ"),
+            (self.settings_nav_btn, "Настройки", "Н", "Настройки"),
+            (self.sessions_nav_btn, "Сессии", "С", "Сессии"),
+            (self.alerts_nav_btn, "Алерты", "А", "Алерты"),
         ]
 
     def toggle_sidebar(self) -> None:
@@ -1467,11 +1467,11 @@ class MainWindow(QMainWindow):
 
     def _assessment_text(self, assessment: dict | None) -> str:
         if not assessment:
-            return "Risk breakdown: N/A\nFindings: N/A"
+            return "Состав риска: N/A\nКлючевые выводы: N/A"
 
         components = assessment.get("components") or {}
         findings = assessment.get("findings") or []
-        lines = ["Risk breakdown:"]
+        lines = ["Состав риска:"]
         if components:
             for name, value in components.items():
                 lines.append(f"- {name}: {value}")
@@ -1479,7 +1479,7 @@ class MainWindow(QMainWindow):
             lines.append("- N/A")
 
         lines.append("")
-        lines.append("Key findings:")
+        lines.append("Ключевые выводы:")
         if findings:
             for finding in findings[:6]:
                 lines.append(f"- {finding}")
@@ -1630,7 +1630,7 @@ class MainWindow(QMainWindow):
         incident = assessment.get("incident_probability") or "-"
         confidence = assessment.get("confidence") or "-"
         self.pcap_assessment_summary_label.setText(
-            f"{summary}\nThreat: {threat} | Incident: {incident} | Confidence: {confidence}"
+            f"{summary}\nУгроза: {threat} | Инцидент: {incident} | Достоверность: {confidence}"
         )
 
     def _append_pcap_alert_from_log(self, msg: str) -> None:
@@ -1941,7 +1941,7 @@ class MainWindow(QMainWindow):
             self.alert_type_filter.addItem(alert_type, alert_type)
 
         self.alert_verdict_filter.clear()
-        self.alert_verdict_filter.addItem("Любой verdict", None)
+        self.alert_verdict_filter.addItem("Любой вердикт", None)
         for verdict in ("malicious", "suspicious", "anomaly", "normal"):
             self.alert_verdict_filter.addItem(verdict.upper(), verdict)
         self._alert_filters_loaded = True
@@ -2037,12 +2037,12 @@ class MainWindow(QMainWindow):
 
     def _clear_alert_details_panel(self) -> None:
         if hasattr(self, "alert_summary_title"):
-            self.alert_summary_title.setText("Alert Summary")
+            self.alert_summary_title.setText("Детали алерта")
             self._set_verdict_badge(self.alert_summary_verdict, "UNKNOWN")
             self.alert_summary_time.setText("-")
             self.alert_summary_type.setText("-")
-            self.alert_summary_source.setText("Source: -")
-            self.alert_summary_destination.setText("Destination: -")
+            self.alert_summary_source.setText("Источник: -")
+            self.alert_summary_destination.setText("Назначение: -")
             self.alert_summary_description.setText("-")
             self.linked_session_label.setText(self._linked_alert_session_context(None))
         if hasattr(self, "alert_details"):
@@ -2056,7 +2056,7 @@ class MainWindow(QMainWindow):
         try:
             table.clearSelection()
             table.setRowCount(0)
-            self.alerts_count_label.setText(f"Alerts: {len(self.alert_rows)}")
+            self.alerts_count_label.setText(f"Алерты: {len(self.alert_rows)}")
             self._clear_alert_details_panel()
             if hasattr(self, "alerts_empty_label"):
                 self.alerts_empty_label.setVisible(not bool(self.alert_rows))
@@ -2135,13 +2135,13 @@ class MainWindow(QMainWindow):
         session_data = get_session_record(session_id)
         if session_data:
             session_context = f"""
-Session ID: {session_id}
+ID сессии: {session_id}
 IB Score: {session_data.get('final_ib_score') if session_data.get('final_ib_score') is not None else '-'}
-IB Level: {session_data.get('final_ib_level') or '-'}
-Threat Level: {session_data.get('threat_level') or '-'}
-Incident Probability: {session_data.get('incident_probability') or '-'}
-Confidence: {session_data.get('confidence') or '-'}
-Summary: {session_data.get('summary_text') or '-'}
+Уровень IB: {session_data.get('final_ib_level') or '-'}
+Уровень угрозы: {session_data.get('threat_level') or '-'}
+Вероятность инцидента: {session_data.get('incident_probability') or '-'}
+Достоверность: {session_data.get('confidence') or '-'}
+Сводка: {session_data.get('summary_text') or '-'}
 """.strip()
         else:
             session_context = empty_text
@@ -2170,24 +2170,24 @@ Summary: {session_data.get('summary_text') or '-'}
         src, dst = self._extract_alert_endpoints(description or "")
         session_context = self._linked_alert_session_context(session_id)
         if hasattr(self, "alert_summary_title"):
-            self.alert_summary_title.setText(f"Alert Details: ALR-{int(alert_id):03d}" if str(alert_id).isdigit() else f"Alert Details: {alert_id}")
+            self.alert_summary_title.setText(f"Детали алерта: ALR-{int(alert_id):03d}" if str(alert_id).isdigit() else f"Детали алерта: {alert_id}")
             self._set_verdict_badge(self.alert_summary_verdict, display_verdict)
             self.alert_summary_time.setText(timestamp or "-")
-            self.alert_summary_type.setText(f"Type: {alert_type or '-'}")
-            self.alert_summary_source.setText(f"Source: {src}")
-            self.alert_summary_destination.setText(f"Destination: {dst}")
+            self.alert_summary_type.setText(f"Тип: {alert_type or '-'}")
+            self.alert_summary_source.setText(f"Источник: {src}")
+            self.alert_summary_destination.setText(f"Назначение: {dst}")
             self.alert_summary_description.setText(description or "-")
             self.linked_session_label.setText(session_context)
         detail = f"""ID: {alert_id}
-Time: {timestamp or '-'}
-Session ID: {session_id if session_id is not None else '-'}
-Type: {alert_type or '-'}
-Verdict: {display_verdict}
-Source: {src}
-Destination: {dst}
+Время: {timestamp or '-'}
+ID сессии: {session_id if session_id is not None else '-'}
+Тип: {alert_type or '-'}
+Вердикт: {display_verdict}
+Источник: {src}
+Назначение: {dst}
 IPs: {ips}
 
-Description:
+Описание:
 {description or '-'}
 """
         self.alert_details.setText(detail)
@@ -2250,9 +2250,9 @@ Description:
         if hasattr(self, "session_score_value"):
             self.session_score_value.setText("-")
             self.session_score_level.setText("-")
-            self.session_threat_badge.setText("Threat: -")
-            self.session_incident_badge.setText("Incident: -")
-            self.session_confidence_badge.setText("Confidence: -")
+            self.session_threat_badge.setText("Угроза: -")
+            self.session_incident_badge.setText("Инцидент: -")
+            self.session_confidence_badge.setText("Достоверность: -")
             self.session_explanation_label.setText("Выберите сессию слева.")
             self.session_comparison_label.setText("Нет данных для сравнения")
             for label in self.session_stat_labels.values():
@@ -2282,9 +2282,9 @@ Description:
 
             self.session_score_value.setText(str(score) if score is not None else "-")
             self.session_score_level.setText(s.get("final_ib_level") or "-")
-            self.session_threat_badge.setText(f"Threat: {s.get('threat_level') or '-'}")
-            self.session_incident_badge.setText(f"Incident: {s.get('incident_probability') or '-'}")
-            self.session_confidence_badge.setText(f"Confidence: {s.get('confidence') or '-'}")
+            self.session_threat_badge.setText(f"Угроза: {s.get('threat_level') or '-'}")
+            self.session_incident_badge.setText(f"Инцидент: {s.get('incident_probability') or '-'}")
+            self.session_confidence_badge.setText(f"Достоверность: {s.get('confidence') or '-'}")
             self.session_explanation_label.setText(s.get("summary_text") or assessment_details or "-")
             self.session_comparison_label.setText(comparison or "Нет данных для сравнения")
             self.session_stat_labels["packets"].setText(f"{int(s.get('total_packets') or 0):,}")
@@ -2305,39 +2305,39 @@ Description:
         comparison = self._comparison_text(s, previous)
         assessment_details = self._stored_assessment_text(s)
         text = f"""
-SESSION
+СЕССИЯ
 ID: {s.get('id')}
-Start: {s.get('started_at') or '-'}
-Stop: {s.get('stopped_at') or '-'}
-Duration: {s.get('duration_sec') or 0} sec
+Старт: {s.get('started_at') or '-'}
+Стоп: {s.get('stopped_at') or '-'}
+Длительность: {s.get('duration_sec') or 0} сек.
 
-Profile: {s.get('profile_name') or '-'}
-Interface: {s.get('interface_name') or '-'}
+Профиль: {s.get('profile_name') or '-'}
+Интерфейс: {s.get('interface_name') or '-'}
 
-SECURITY ASSESSMENT
+ОЦЕНКА БЕЗОПАСНОСТИ
 IB Score: {s.get('final_ib_score') if s.get('final_ib_score') is not None else '-'}
-IB Level: {s.get('final_ib_level') or '-'}
-Threat Level: {s.get('threat_level') or '-'}
-Incident Probability: {s.get('incident_probability') or '-'}
-Confidence: {s.get('confidence') or '-'}
-Total Risk: {s.get('total_risk') if s.get('total_risk') is not None else '-'}
+Уровень IB: {s.get('final_ib_level') or '-'}
+Уровень угрозы: {s.get('threat_level') or '-'}
+Вероятность инцидента: {s.get('incident_probability') or '-'}
+Достоверность: {s.get('confidence') or '-'}
+Общий риск: {s.get('total_risk') if s.get('total_risk') is not None else '-'}
 
-Summary:
+Сводка:
 {s.get('summary_text') or '-'}
 
-EXPLANATION
+ОБЪЯСНЕНИЕ
 {assessment_details}
 
-STATISTICS
-Packets: {s.get('total_packets') or 0}
-Anomalies: {s.get('total_anomalies') or 0}
-Incidents: {s.get('total_incidents') or 0}
-IOC matches: {s.get('total_ioc_matches') or 0}
+СТАТИСТИКА
+Пакеты: {s.get('total_packets') or 0}
+Аномалии: {s.get('total_anomalies') or 0}
+Инциденты: {s.get('total_incidents') or 0}
+IOC совпадения: {s.get('total_ioc_matches') or 0}
 
-COMPARISON
+СРАВНЕНИЕ
 {comparison}
 
-Report path:
+Путь к отчёту:
 {s.get('report_path') or '-'}
 """
         self.session_details.setText(text)
@@ -2423,7 +2423,7 @@ Report path:
         except OSError:
             updated = "-"
 
-        iface = self.iface_combo.currentText() if hasattr(self, "iface_combo") and self.iface_combo.count() else "Auto-select"
+        iface = self.iface_combo.currentText() if hasattr(self, "iface_combo") and self.iface_combo.count() else "Автовыбор"
         sample_factor = int(data.get("sample_factor", getattr(self.engine, "sample_factor", 1)) or 1)
         pps_window = data.get("pps_window_sec", "-")
         scan_threshold = data.get("scan_ports_threshold", "-")
@@ -2439,30 +2439,30 @@ Report path:
         ml_percent = min(100, max(0, int(contamination * 10000)))
         anomaly_percent = min(100, max(0, int(int(scan_threshold or 0) / 100 * 100))) if str(scan_threshold).isdigit() else 0
 
-        self.settings_status_title_lbl.setText(f"Active Profile Status: {active_profile.name}")
+        self.settings_status_title_lbl.setText(f"Статус активного профиля: {active_profile.name}")
         self.profile_name_lbl.setText(iface)
         self.settings_profile_file_lbl.setText(active_profile.filename)
         self.settings_rules_count_lbl.setText(f"{scan_threshold} scan / {dos_threshold} pps")
-        self.settings_model_lbl.setText(f"Isolation Forest, {estimators} trees")
+        self.settings_model_lbl.setText(f"Isolation Forest, {estimators} деревьев")
         self.settings_updated_lbl.setText(updated)
 
         self.settings_interface_lbl.setText(iface)
         self.settings_interface_lbl.setToolTip(iface)
-        self.sample_factor_lbl.setText(f"1 / {sample_factor} packets")
-        self.settings_live_lbl.setText("ON")
-        self.settings_dpi_lbl.setText("ON")
-        self.settings_rule_lbl.setText(f"Standard selected   |   window {pps_window}s")
-        self.ml_status_lbl.setText(f"{ml_percent}%  | train {train_size}, contamination {contamination:.3f}")
+        self.sample_factor_lbl.setText(f"1 / {sample_factor} пакетов")
+        self.settings_live_lbl.setText("Вкл.")
+        self.settings_dpi_lbl.setText("Вкл.")
+        self.settings_rule_lbl.setText(f"Стандартный выбран   |   окно {pps_window}s")
+        self.ml_status_lbl.setText(f"{ml_percent}%  | обучение {train_size}, contamination {contamination:.3f}")
         self.settings_anom_lbl.setText(f"{anomaly_percent}%  | scan {scan_threshold}, DoS {dos_threshold}")
         self.settings_ioc_path_lbl.setText(short_db_path)
         self.settings_ioc_path_lbl.setToolTip(str(db_path))
-        self.ioc_count_lbl.setText(f"{ioc_count} indicators loaded")
+        self.ioc_count_lbl.setText(f"{ioc_count} индикаторов загружено")
         self.settings_feeds_lbl.setText("AlienVault   MISP")
         self.settings_report_lbl.setText("HTML")
-        self.settings_report_options_lbl.setText("Incidents on  |  IOC matches on  |  Raw logs off")
+        self.settings_report_options_lbl.setText("Инциденты вкл.  |  IOC совпадения вкл.  |  Сырые логи выкл.")
         self.settings_db_path_lbl.setText(short_db_path)
         self.settings_db_path_lbl.setToolTip(str(db_path))
-        self.settings_db_counts_lbl.setText(f"{sessions_count} sessions  |  {alerts_count} alerts")
+        self.settings_db_counts_lbl.setText(f"{sessions_count} сессий  |  {alerts_count} алертов")
 
     # -------- profile --------
     def apply_profile_on_startup(self) -> None:
@@ -2515,7 +2515,7 @@ Report path:
         self.settings_btn.setEnabled(True)
         self.settings_page_btn.setEnabled(True)
 
-        self.action_btn.setText("Start")
+        self.action_btn.setText("Старт")
         self.action_btn.setObjectName("primary_btn")
         self._refresh_widget_style(self.action_btn)
 
@@ -2562,7 +2562,7 @@ Report path:
             self.switch_page(0)
             self.is_monitoring = True
             self.current_mode = "live"
-            self.action_btn.setText("Stop")
+            self.action_btn.setText("Стоп")
             self.action_btn.setObjectName("stop_mode")
             self._refresh_widget_style(self.action_btn)
 
