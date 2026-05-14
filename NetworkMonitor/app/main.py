@@ -253,7 +253,7 @@ class MainWindow(QMainWindow):
         iface_box = QVBoxLayout()
         iface_box.setContentsMargins(0, 0, 0, 0)
         iface_box.setSpacing(2)
-        iface_label = QLabel("РРЅС‚РµСЂС„РµР№СЃ:")
+        iface_label = QLabel("Интерфейс:")
         iface_label.setObjectName("control_label")
         iface_box.addWidget(iface_label)
         iface_box.addWidget(self.iface_combo)
@@ -558,59 +558,389 @@ class MainWindow(QMainWindow):
         return scroll
 
     def _build_pcap_page(self) -> QWidget:
+        scroll = QScrollArea()
+        scroll.setObjectName("pcap_scroll")
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+
         page = QWidget()
+        scroll.setWidget(page)
         layout = QVBoxLayout(page)
-        layout.setContentsMargins(20, 20, 20, 20)
-        layout.setSpacing(14)
+        layout.setContentsMargins(18, 18, 18, 18)
+        layout.setSpacing(12)
 
-        title = QLabel("PCAP analysis")
-        title.setObjectName("page_title")
-        layout.addWidget(title)
+        header = QHBoxLayout()
+        header.setContentsMargins(0, 0, 0, 0)
+        header.setSpacing(12)
 
-        desc = QLabel("Запуск offline-анализа PCAP с выводом логов и ключевых результатов.")
-        desc.setObjectName("page_subtitle")
-        desc.setWordWrap(True)
-        layout.addWidget(desc)
+        title = QLabel("PCAP File Summary")
+        title.setObjectName("pcap_page_title")
+        header.addWidget(title, 1)
 
-        action_card = QFrame()
-        action_card.setObjectName("panel_card")
-        action_layout = QHBoxLayout(action_card)
-        action_layout.setContentsMargins(16, 14, 16, 14)
-        self.pcap_btn = QPushButton("Выбрать PCAP файл")
+        self.pcap_btn = QPushButton("Open PCAP")
+        self.pcap_btn.setObjectName("pcap_action_btn")
         self.pcap_btn.clicked.connect(self.open_pcap)
-        action_layout.addWidget(self.pcap_btn)
-        self.open_main_btn = QPushButton("Перейти на dashboard")
-        self.open_main_btn.clicked.connect(lambda: self.switch_page(0))
-        action_layout.addWidget(self.open_main_btn)
-        layout.addWidget(action_card)
+        header.addWidget(self.pcap_btn)
 
-        self.pcap_state_label = QLabel("Состояние: ожидание файла")
-        layout.addWidget(self.pcap_state_label)
+        self.open_main_btn = QPushButton("Analyze")
+        self.open_main_btn.setObjectName("pcap_action_btn")
+        self.open_main_btn.clicked.connect(self.open_pcap)
+        header.addWidget(self.open_main_btn)
 
-        body = QHBoxLayout()
+        self.pcap_export_btn = QPushButton("Export Report")
+        self.pcap_export_btn.setObjectName("pcap_action_btn")
+        self.pcap_export_btn.clicked.connect(self.export_report)
+        header.addWidget(self.pcap_export_btn)
+
+        self.pcap_clear_btn = QPushButton("Clear")
+        self.pcap_clear_btn.setObjectName("pcap_action_btn")
+        self.pcap_clear_btn.clicked.connect(self.clear_pcap_view)
+        header.addWidget(self.pcap_clear_btn)
+        layout.addLayout(header)
+
+        summary_card = QFrame()
+        summary_card.setObjectName("pcap_detail_card")
+        summary_layout = QVBoxLayout(summary_card)
+        summary_layout.setContentsMargins(14, 12, 14, 12)
+        summary_layout.setSpacing(10)
+        summary_title = QLabel("PCAP File Summary")
+        summary_title.setObjectName("pcap_card_title")
+        summary_layout.addWidget(summary_title)
+
+        summary_grid = QGridLayout()
+        summary_grid.setContentsMargins(0, 0, 0, 0)
+        summary_grid.setHorizontalSpacing(20)
+        summary_grid.setVerticalSpacing(4)
+        self.pcap_file_name_label = QLabel("-")
+        self.pcap_file_size_label = QLabel("-")
+        self.pcap_packet_count_label = QLabel("0")
+        self.pcap_duration_label = QLabel("00:00:00")
+        summary_items = [
+            ("File Name:", self.pcap_file_name_label),
+            ("Size:", self.pcap_file_size_label),
+            ("Packets:", self.pcap_packet_count_label),
+            ("Duration:", self.pcap_duration_label),
+        ]
+        for col, (label_text, value_label) in enumerate(summary_items):
+            label = QLabel(label_text)
+            label.setObjectName("pcap_field_label")
+            value_label.setObjectName("pcap_field_value")
+            value_label.setWordWrap(True)
+            summary_grid.addWidget(label, 0, col)
+            summary_grid.addWidget(value_label, 1, col)
+            summary_grid.setColumnStretch(col, 1)
+        summary_layout.addLayout(summary_grid)
+        layout.addWidget(summary_card)
+
+        assessment_card = QFrame()
+        assessment_card.setObjectName("pcap_detail_card")
+        assessment_layout = QVBoxLayout(assessment_card)
+        assessment_layout.setContentsMargins(14, 12, 14, 12)
+        assessment_layout.setSpacing(8)
+        assessment_title = QLabel("Security Assessment")
+        assessment_title.setObjectName("pcap_card_title")
+        assessment_layout.addWidget(assessment_title)
+
+        assessment_body = QHBoxLayout()
+        assessment_body.setContentsMargins(0, 0, 0, 0)
+        assessment_body.setSpacing(14)
+        self.pcap_score_label = QLabel("-")
+        self.pcap_score_label.setObjectName("pcap_score_badge")
+        self.pcap_score_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        assessment_body.addWidget(self.pcap_score_label, 0)
+
+        assessment_text = QVBoxLayout()
+        assessment_text.setContentsMargins(0, 0, 0, 0)
+        assessment_text.setSpacing(4)
+        self.pcap_assessment_level_label = QLabel("No data")
+        self.pcap_assessment_level_label.setObjectName("pcap_assessment_level")
+        self.pcap_assessment_summary_label = QLabel("Open a PCAP file to start analysis.")
+        self.pcap_assessment_summary_label.setObjectName("pcap_body_text")
+        self.pcap_assessment_summary_label.setWordWrap(True)
+        assessment_text.addWidget(self.pcap_assessment_level_label)
+        assessment_text.addWidget(self.pcap_assessment_summary_label)
+        assessment_body.addLayout(assessment_text, 1)
+        assessment_layout.addLayout(assessment_body)
+        layout.addWidget(assessment_card)
+
+        analysis_grid = QGridLayout()
+        analysis_grid.setContentsMargins(0, 0, 0, 0)
+        analysis_grid.setHorizontalSpacing(12)
+        analysis_grid.setVerticalSpacing(12)
+
+        protocol_card = QFrame()
+        protocol_card.setObjectName("pcap_detail_card")
+        protocol_layout = QVBoxLayout(protocol_card)
+        protocol_layout.setContentsMargins(14, 12, 14, 12)
+        protocol_layout.setSpacing(8)
+        protocol_title = QLabel("Protocol Distribution")
+        protocol_title.setObjectName("pcap_card_title")
+        protocol_layout.addWidget(protocol_title)
+        self.pcap_protocol_list = QListWidget()
+        self.pcap_protocol_list.setObjectName("pcap_compact_list")
+        self.pcap_protocol_list.addItems(["TCP - pending", "UDP - pending", "ICMP - pending", "Other - pending"])
+        protocol_layout.addWidget(self.pcap_protocol_list)
+        analysis_grid.addWidget(protocol_card, 0, 0)
+
+        top_ips_card = QFrame()
+        top_ips_card.setObjectName("pcap_detail_card")
+        top_ips_layout = QVBoxLayout(top_ips_card)
+        top_ips_layout.setContentsMargins(14, 12, 14, 12)
+        top_ips_layout.setSpacing(8)
+        top_ips_title = QLabel("Top Source/Destination IPs")
+        top_ips_title.setObjectName("pcap_card_title")
+        top_ips_layout.addWidget(top_ips_title)
         self.pcap_stats_list = QListWidget()
-        body.addWidget(self.pcap_stats_list, 1)
+        self.pcap_stats_list.setObjectName("pcap_compact_list")
+        top_ips_layout.addWidget(self.pcap_stats_list)
+        analysis_grid.addWidget(top_ips_card, 0, 1)
+
+        conversations_card = QFrame()
+        conversations_card.setObjectName("pcap_detail_card")
+        conversations_layout = QVBoxLayout(conversations_card)
+        conversations_layout.setContentsMargins(14, 12, 14, 12)
+        conversations_layout.setSpacing(8)
+        conversations_title = QLabel("Suspicious Conversations")
+        conversations_title.setObjectName("pcap_card_title")
+        conversations_layout.addWidget(conversations_title)
+        self.pcap_conversations_list = QListWidget()
+        self.pcap_conversations_list.setObjectName("pcap_compact_list")
+        conversations_layout.addWidget(self.pcap_conversations_list)
+        analysis_grid.addWidget(conversations_card, 0, 2)
+        analysis_grid.setColumnStretch(0, 1)
+        analysis_grid.setColumnStretch(1, 1)
+        analysis_grid.setColumnStretch(2, 1)
+        layout.addLayout(analysis_grid)
+
+        alerts_card = QFrame()
+        alerts_card.setObjectName("pcap_detail_card")
+        alerts_layout = QVBoxLayout(alerts_card)
+        alerts_layout.setContentsMargins(14, 12, 14, 12)
+        alerts_layout.setSpacing(8)
+        alerts_title = QLabel("Detailed Alerts")
+        alerts_title.setObjectName("pcap_card_title")
+        alerts_layout.addWidget(alerts_title)
+        self.pcap_alerts_table = QTableWidget(0, 4)
+        self.pcap_alerts_table.setObjectName("pcap_alerts_table")
+        self.pcap_alerts_table.setHorizontalHeaderLabels(["Time", "Type", "Verdict", "Description"])
+        self.pcap_alerts_table.verticalHeader().setVisible(False)
+        self.pcap_alerts_table.horizontalHeader().setStretchLastSection(True)
+        self.pcap_alerts_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.pcap_alerts_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self.pcap_alerts_table.setMinimumHeight(112)
+        alerts_layout.addWidget(self.pcap_alerts_table)
+        layout.addWidget(alerts_card)
+
+        bottom_grid = QGridLayout()
+        bottom_grid.setContentsMargins(0, 0, 0, 0)
+        bottom_grid.setHorizontalSpacing(12)
+        bottom_grid.setVerticalSpacing(12)
+
+        log_card = QFrame()
+        log_card.setObjectName("pcap_detail_card")
+        log_layout = QVBoxLayout(log_card)
+        log_layout.setContentsMargins(14, 12, 14, 12)
+        log_layout.setSpacing(8)
+        log_title = QLabel("Analysis Log")
+        log_title.setObjectName("pcap_card_title")
+        log_layout.addWidget(log_title)
         self.pcap_log_area = QTextEdit()
+        self.pcap_log_area.setObjectName("pcap_log_panel")
         self.pcap_log_area.setReadOnly(True)
         self.pcap_log_area.document().setMaximumBlockCount(self.max_log_messages)
-        body.addWidget(self.pcap_log_area, 2)
-        layout.addLayout(body, 1)
-        return page
+        self.pcap_log_area.setMinimumHeight(180)
+        log_layout.addWidget(self.pcap_log_area)
+        bottom_grid.addWidget(log_card, 0, 0)
+
+        timeline_card = QFrame()
+        timeline_card.setObjectName("pcap_detail_card")
+        timeline_layout = QVBoxLayout(timeline_card)
+        timeline_layout.setContentsMargins(14, 12, 14, 12)
+        timeline_layout.setSpacing(8)
+        timeline_title = QLabel("Traffic Timeline")
+        timeline_title.setObjectName("pcap_card_title")
+        timeline_layout.addWidget(timeline_title)
+        self.pcap_plot = PlotWidget("Packets/sec")
+        self.pcap_plot.setMinimumHeight(180)
+        timeline_layout.addWidget(self.pcap_plot)
+        bottom_grid.addWidget(timeline_card, 0, 1)
+        bottom_grid.setColumnStretch(0, 1)
+        bottom_grid.setColumnStretch(1, 1)
+        layout.addLayout(bottom_grid)
+
+        self.pcap_state_label = QLabel("Состояние: ожидание файла")
+        self.pcap_state_label.setObjectName("pcap_state_label")
+        layout.addWidget(self.pcap_state_label)
+        return scroll
+
+    def _make_settings_card(self, title: str) -> tuple[QFrame, QVBoxLayout]:
+        card = QFrame()
+        card.setObjectName("settings_card")
+        layout = QVBoxLayout(card)
+        layout.setContentsMargins(14, 12, 14, 12)
+        layout.setSpacing(10)
+
+        title_label = QLabel(title)
+        title_label.setObjectName("settings_card_title")
+        layout.addWidget(title_label)
+        return card, layout
+
+    def _settings_value_row(self, label_text: str, value_label: QLabel) -> QWidget:
+        row = QWidget()
+        layout = QHBoxLayout(row)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(10)
+
+        label = QLabel(label_text)
+        label.setObjectName("settings_label")
+        value_label.setObjectName("settings_value")
+        value_label.setWordWrap(True)
+        value_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+
+        layout.addWidget(label, 1)
+        layout.addWidget(value_label, 1)
+        return row
+
+    def _settings_field_label(self, text: str = "-") -> QLabel:
+        label = QLabel(text)
+        label.setObjectName("settings_field")
+        label.setWordWrap(True)
+        return label
+
+    def _settings_toggle_label(self, text: str, enabled: bool = True) -> QLabel:
+        label = QLabel(text)
+        label.setObjectName("settings_toggle" if enabled else "settings_toggle_off")
+        label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        return label
+
+    def _settings_slider_label(self, text: str) -> QLabel:
+        label = QLabel(text)
+        label.setObjectName("settings_slider")
+        return label
 
     def _build_settings_page(self) -> QWidget:
         page = QWidget()
         layout = QVBoxLayout(page)
-        layout.setContentsMargins(20, 20, 20, 20)
+        layout.setContentsMargins(18, 18, 18, 18)
         layout.setSpacing(14)
 
-        title = QLabel("Settings / Profile")
-        title.setObjectName("page_title")
+        title = QLabel("System Settings and Profiles")
+        title.setObjectName("settings_page_title")
         layout.addWidget(title)
 
+        body = QHBoxLayout()
+        body.setContentsMargins(0, 0, 0, 0)
+        body.setSpacing(14)
+
+        profiles_card, profiles_layout = self._make_settings_card("Monitoring Profiles")
+        profiles_card.setMinimumWidth(270)
+        self.settings_profiles_list = QListWidget()
+        self.settings_profiles_list.setObjectName("settings_profile_list")
+        profiles_layout.addWidget(self.settings_profiles_list, 1)
+
+        self.settings_page_btn = QPushButton("New Profile")
+        self.settings_page_btn.setObjectName("settings_primary_action")
+        self.settings_page_btn.clicked.connect(self.open_settings)
+        profiles_layout.addWidget(self.settings_page_btn)
+        body.addWidget(profiles_card, 1)
+
+        center = QWidget()
+        center_layout = QVBoxLayout(center)
+        center_layout.setContentsMargins(0, 0, 0, 0)
+        center_layout.setSpacing(10)
+
+        monitoring_card, monitoring_layout = self._make_settings_card("Monitoring Profile")
+        monitoring_grid = QGridLayout()
+        monitoring_grid.setContentsMargins(0, 0, 0, 0)
+        monitoring_grid.setHorizontalSpacing(18)
+        monitoring_grid.setVerticalSpacing(8)
+        self.settings_interface_lbl = self._settings_field_label("-")
+        self.sample_factor_lbl = self._settings_field_label("-")
+        self.settings_live_lbl = self._settings_toggle_label("ON", True)
+        self.settings_dpi_lbl = self._settings_toggle_label("ON", True)
+        monitoring_grid.addWidget(self._settings_value_row("Network Interface", self.settings_interface_lbl), 0, 0)
+        monitoring_grid.addWidget(self._settings_value_row("Sampling Rate", self.sample_factor_lbl), 0, 1)
+        monitoring_grid.addWidget(self._settings_value_row("Live Monitoring", self.settings_live_lbl), 1, 0)
+        monitoring_grid.addWidget(self._settings_value_row("Deep Packet Inspection", self.settings_dpi_lbl), 1, 1)
+        monitoring_layout.addLayout(monitoring_grid)
+        center_layout.addWidget(monitoring_card)
+
+        detection_card, detection_layout = self._make_settings_card("Detection Settings")
+        self.settings_rule_lbl = QLabel("Standard      Advanced      Experimental")
+        self.settings_rule_lbl.setObjectName("settings_segmented")
+        self.ml_status_lbl = self._settings_slider_label("ML Sensitivity")
+        self.settings_anom_lbl = self._settings_slider_label("Anomaly Threshold")
+        detection_layout.addWidget(self._settings_value_row("Rule Engine", self.settings_rule_lbl))
+        detection_layout.addWidget(self._settings_value_row("ML Sensitivity", self.ml_status_lbl))
+        detection_layout.addWidget(self._settings_value_row("Anomaly Threshold", self.settings_anom_lbl))
+        center_layout.addWidget(detection_card)
+
+        ioc_card, ioc_layout = self._make_settings_card("IOC Sources")
+        self.settings_ioc_path_lbl = self._settings_field_label("local IOC lists")
+        self.ioc_count_lbl = self._settings_field_label("IOC: -")
+        self.settings_feeds_lbl = QLabel("AlienVault   MISP")
+        self.settings_feeds_lbl.setObjectName("settings_tags")
+        ioc_source_row = QWidget()
+        ioc_source_layout = QHBoxLayout(ioc_source_row)
+        ioc_source_layout.setContentsMargins(0, 0, 0, 0)
+        ioc_source_layout.setSpacing(10)
+        ioc_source_label = QLabel("IP/Domain Blocklist")
+        ioc_source_label.setObjectName("settings_label")
+        self.settings_ioc_import_btn = QPushButton("Import")
+        self.settings_ioc_import_btn.setObjectName("settings_secondary_action")
+        self.settings_ioc_import_btn.setEnabled(False)
+        ioc_source_layout.addWidget(ioc_source_label, 1)
+        ioc_source_layout.addWidget(self.settings_ioc_path_lbl, 2)
+        ioc_source_layout.addWidget(self.settings_ioc_import_btn, 0)
+        ioc_layout.addWidget(ioc_source_row)
+        ioc_layout.addWidget(self._settings_value_row("IOC Counters", self.ioc_count_lbl))
+        ioc_layout.addWidget(self._settings_value_row("Threat Intelligence Feeds", self.settings_feeds_lbl))
+        center_layout.addWidget(ioc_card)
+
+        report_card, report_layout = self._make_settings_card("Report Settings")
+        self.settings_report_lbl = self._settings_field_label("HTML")
+        self.settings_report_options_lbl = QLabel("Include incidents  |  Include IOC matches  |  Include raw logs: off")
+        self.settings_report_options_lbl.setObjectName("settings_checks")
+        report_layout.addWidget(self._settings_value_row("Default Format", self.settings_report_lbl))
+        report_layout.addWidget(self._settings_value_row("Included Sections", self.settings_report_options_lbl))
+        center_layout.addWidget(report_card)
+
+        storage_card, storage_layout = self._make_settings_card("Database & Storage")
+        self.settings_db_path_lbl = self._settings_field_label("-")
+        self.settings_db_counts_lbl = self._settings_slider_label("-")
+        storage_layout.addWidget(self._settings_value_row("Database Path", self.settings_db_path_lbl))
+        storage_layout.addWidget(self._settings_value_row("Stored Records", self.settings_db_counts_lbl))
+        center_layout.addWidget(storage_card)
+        body.addWidget(center, 2)
+
+        summary_card, summary_layout = self._make_settings_card("Active Profile Status: Default")
+        summary_card.setObjectName("settings_status_card")
+        summary_card.setMinimumWidth(260)
+        self.settings_status_title_lbl = summary_layout.itemAt(0).widget()
+        self.profile_name_lbl = QLabel("-")
+        self.settings_profile_file_lbl = QLabel("-")
+        self.settings_rules_count_lbl = QLabel("-")
+        self.settings_model_lbl = QLabel("-")
+        self.settings_updated_lbl = QLabel("-")
+        self.active_profile_status_lbl = QLabel("Status:\nActive & Stable")
+        self.active_profile_status_lbl.setObjectName("settings_status_good")
+
+        summary_layout.addWidget(self._settings_value_row("Interface", self.profile_name_lbl))
+        summary_layout.addWidget(self._settings_value_row("Profile File", self.settings_profile_file_lbl))
+        summary_layout.addWidget(self._settings_value_row("Rule Count", self.settings_rules_count_lbl))
+        summary_layout.addWidget(self._settings_value_row("ML Model", self.settings_model_lbl))
+        summary_layout.addWidget(self._settings_value_row("Last Update", self.settings_updated_lbl))
+        summary_layout.addWidget(self.active_profile_status_lbl)
+        summary_layout.addStretch(1)
+        body.addWidget(summary_card, 1)
+
+        layout.addLayout(body, 1)
+        self.refresh_settings_profile_page()
+        return page
+
         desc = QLabel("Управление активным профилем, sampling и параметрами ML-модуля.")
-        desc.setObjectName("page_subtitle")
-        desc.setWordWrap(True)
-        layout.addWidget(desc)
+        return page
 
         info_card = QFrame()
         info_card.setObjectName("panel_card")
@@ -645,13 +975,24 @@ class MainWindow(QMainWindow):
         header.setContentsMargins(0, 0, 0, 0)
         header.setSpacing(12)
 
-        sessions_title = QLabel("РЎРµСЃСЃРёРё РјРѕРЅРёС‚РѕСЂРёРЅРіР°")
+        sessions_title = QLabel()
+        sessions_title.setText("Сессии мониторинга")
         sessions_title.setObjectName("sessions_page_title")
-        header.addWidget(sessions_title, 1)
 
-        self.open_report_btn = QPushButton("Open/Create Report")
+        header_text = QVBoxLayout()
+        header_text.setContentsMargins(0, 0, 0, 0)
+        header_text.setSpacing(3)
+        header_text.addWidget(sessions_title)
+
+        sessions_subtitle = QLabel("История сессий захвата и анализа трафика")
+        sessions_subtitle.setObjectName("sessions_page_subtitle")
+        header_text.addWidget(sessions_subtitle)
+        header.addLayout(header_text, 1)
+
+        self.open_report_btn = QPushButton("Отчёт")
         self.open_report_btn.setObjectName("primary_btn")
-        self.open_report_btn.setMinimumSize(178, 42)
+        self.open_report_btn.setToolTip("Открыть существующий отчёт или сформировать новый для выбранной сессии")
+        self.open_report_btn.setMinimumSize(118, 42)
         self.open_report_btn.clicked.connect(self.open_selected_session_report)
         header.addWidget(self.open_report_btn, 0, Qt.AlignmentFlag.AlignRight)
         layout.addLayout(header)
@@ -754,7 +1095,7 @@ class MainWindow(QMainWindow):
         explanation_layout.setSpacing(10)
         explanation_title = QLabel("Explanation")
         explanation_title.setObjectName("session_card_title")
-        self.session_explanation_label = QLabel("Р’С‹Р±РµСЂРёС‚Рµ СЃРµСЃСЃРёСЋ СЃР»РµРІР°.")
+        self.session_explanation_label = QLabel("Выберите сессию слева.")
         self.session_explanation_label.setObjectName("session_body_text")
         self.session_explanation_label.setWordWrap(True)
         explanation_layout.addWidget(explanation_title)
@@ -807,7 +1148,7 @@ class MainWindow(QMainWindow):
         comparison_layout.setSpacing(10)
         comparison_title = QLabel("Comparison")
         comparison_title.setObjectName("session_card_title")
-        self.session_comparison_label = QLabel("РќРµС‚ РґР°РЅРЅС‹С… РґР»СЏ СЃСЂР°РІРЅРµРЅРёСЏ")
+        self.session_comparison_label = QLabel("Нет данных для сравнения")
         self.session_comparison_label.setObjectName("session_body_text")
         self.session_comparison_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.session_comparison_label.setWordWrap(True)
@@ -824,31 +1165,61 @@ class MainWindow(QMainWindow):
     def _build_alerts_page(self) -> QWidget:
         page = QWidget()
         layout = QVBoxLayout(page)
-        layout.setContentsMargins(20, 20, 20, 20)
+        layout.setContentsMargins(18, 16, 18, 18)
         layout.setSpacing(14)
 
-        title = QLabel("Alerts history")
-        title.setObjectName("page_title")
-        layout.addWidget(title)
+        header = QHBoxLayout()
+        header.setContentsMargins(0, 0, 0, 0)
+        header.setSpacing(12)
+        header_text = QVBoxLayout()
+        header_text.setContentsMargins(0, 0, 0, 0)
+        header_text.setSpacing(2)
+        title = QLabel("Журнал алертов")
+        title.setObjectName("alerts_page_title")
+        subtitle = QLabel("Все зафиксированные события безопасности")
+        subtitle.setObjectName("alerts_page_subtitle")
+        header_text.addWidget(title)
+        header_text.addWidget(subtitle)
+        header.addLayout(header_text, 1)
+        layout.addLayout(header)
 
         filters_card = QFrame()
-        filters_card.setObjectName("panel_card")
+        filters_card.setObjectName("alerts_filter_bar")
         filters = QGridLayout(filters_card)
-        filters.setContentsMargins(16, 14, 16, 14)
-        filters.setHorizontalSpacing(10)
-        filters.setVerticalSpacing(10)
+        filters.setContentsMargins(16, 12, 16, 12)
+        filters.setHorizontalSpacing(12)
+        filters.setVerticalSpacing(8)
 
         self.alert_session_filter = QComboBox()
+        self.alert_session_filter.setObjectName("alerts_filter_combo")
+        self.alert_session_filter.setMinimumWidth(240)
+        self.alert_session_filter.setMaximumWidth(260)
         self.alert_type_filter = QComboBox()
+        self.alert_type_filter.setObjectName("alerts_filter_combo")
+        self.alert_type_filter.setMinimumWidth(190)
+        self.alert_type_filter.setMaximumWidth(220)
         self.alert_verdict_filter = QComboBox()
+        self.alert_verdict_filter.setObjectName("alerts_filter_combo")
+        self.alert_verdict_filter.setMinimumWidth(160)
+        self.alert_verdict_filter.setMaximumWidth(180)
         self.alert_search_input = QLineEdit()
-        self.alert_search_input.setPlaceholderText("IP, текст причины или описание")
+        self.alert_search_input.setObjectName("alerts_search_input")
+        self.alert_search_input.setMinimumWidth(220)
+        self.alert_search_input.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        self.alert_search_input.setPlaceholderText("Search alerts, IPs, or descriptions...")
 
         self.alert_period_checkbox = QCheckBox("Период")
+        self.alert_period_checkbox.setObjectName("alerts_period_checkbox")
         self.alert_from_dt = QDateTimeEdit()
+        self.alert_from_dt.setObjectName("alerts_datetime")
         self.alert_from_dt.setCalendarPopup(True)
+        self.alert_from_dt.setDisplayFormat("yyyy-MM-dd HH:mm")
+        self.alert_from_dt.setFixedWidth(150)
         self.alert_to_dt = QDateTimeEdit()
+        self.alert_to_dt.setObjectName("alerts_datetime")
         self.alert_to_dt.setCalendarPopup(True)
+        self.alert_to_dt.setDisplayFormat("yyyy-MM-dd HH:mm")
+        self.alert_to_dt.setFixedWidth(150)
 
         now = datetime.now()
         self.alert_from_dt.setDateTime(QDateTime(now - timedelta(days=7)))
@@ -858,65 +1229,147 @@ class MainWindow(QMainWindow):
         self.alert_period_checkbox.stateChanged.connect(self._toggle_alert_period_filters)
 
         self.alert_refresh_btn = QPushButton("Refresh")
+        self.alert_refresh_btn.setObjectName("alerts_filter_button")
+        self.alert_refresh_btn.setFixedWidth(96)
         self.alert_refresh_btn.clicked.connect(self.load_alerts_history)
         self.alert_reset_btn = QPushButton("Сбросить")
+        self.alert_reset_btn.setObjectName("alerts_reset_button")
+        self.alert_reset_btn.setFixedWidth(96)
         self.alert_reset_btn.clicked.connect(self.reset_alert_filters)
 
-        filters.addWidget(QLabel("Session"), 0, 0)
-        filters.addWidget(self.alert_session_filter, 0, 1)
-        filters.addWidget(QLabel("Type"), 0, 2)
-        filters.addWidget(self.alert_type_filter, 0, 3)
-        filters.addWidget(QLabel("Verdict"), 0, 4)
-        filters.addWidget(self.alert_verdict_filter, 0, 5)
-        filters.addWidget(self.alert_period_checkbox, 1, 0)
-        filters.addWidget(self.alert_from_dt, 1, 1)
-        filters.addWidget(self.alert_to_dt, 1, 2)
-        filters.addWidget(QLabel("Search"), 1, 3)
-        filters.addWidget(self.alert_search_input, 1, 4, 1, 2)
-        filters.addWidget(self.alert_refresh_btn, 0, 6)
-        filters.addWidget(self.alert_reset_btn, 1, 6)
-        filters.setColumnStretch(4, 1)
+        period_wrap = QWidget()
+        period_wrap.setObjectName("alerts_period_wrap")
+        period_layout = QHBoxLayout(period_wrap)
+        period_layout.setContentsMargins(0, 0, 0, 0)
+        period_layout.setSpacing(8)
+        period_layout.addWidget(self.alert_period_checkbox)
+        period_layout.addWidget(self.alert_from_dt)
+        period_layout.addWidget(self.alert_to_dt)
+
+        filters.addWidget(self.alert_session_filter, 0, 0)
+        filters.addWidget(self.alert_type_filter, 0, 1)
+        filters.addWidget(self.alert_verdict_filter, 0, 2)
+        filters.addWidget(self.alert_search_input, 0, 3)
+        filters.addWidget(self.alert_refresh_btn, 0, 4)
+        filters.addWidget(self.alert_reset_btn, 0, 5)
+        filters.addWidget(period_wrap, 1, 0, 1, 6, Qt.AlignmentFlag.AlignLeft)
+        filters.setColumnMinimumWidth(0, 240)
+        filters.setColumnMinimumWidth(1, 190)
+        filters.setColumnMinimumWidth(2, 160)
+        filters.setColumnMinimumWidth(3, 220)
+        filters.setColumnStretch(0, 0)
+        filters.setColumnStretch(1, 0)
+        filters.setColumnStretch(2, 0)
+        filters.setColumnStretch(3, 1)
+        filters.setColumnStretch(4, 0)
+        filters.setColumnStretch(5, 0)
         layout.addWidget(filters_card, 0)
 
         body = QHBoxLayout()
-        body.setSpacing(12)
+        body.setContentsMargins(0, 0, 0, 0)
+        body.setSpacing(16)
 
         table_card = QFrame()
-        table_card.setObjectName("panel_card")
+        table_card.setObjectName("alerts_table_card")
         table_layout = QVBoxLayout(table_card)
-        table_layout.setContentsMargins(16, 14, 16, 14)
-        table_layout.setSpacing(8)
+        table_layout.setContentsMargins(16, 14, 16, 16)
+        table_layout.setSpacing(10)
 
         self.alerts_count_label = QLabel("Alerts: 0")
-        self.alerts_count_label.setObjectName("section_title")
+        self.alerts_count_label.setObjectName("alerts_table_title")
         table_layout.addWidget(self.alerts_count_label)
 
-        self.alerts_table = QTableWidget(0, 5)
-        self.alerts_table.setHorizontalHeaderLabels(["ID", "Time", "Session", "Type", "Description"])
+        self.alerts_empty_label = QLabel("Нет алертов по выбранным фильтрам")
+        self.alerts_empty_label.setObjectName("empty_state_label")
+        self.alerts_empty_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.alerts_empty_label.setVisible(False)
+        table_layout.addWidget(self.alerts_empty_label)
+
+        self.alerts_table = QTableWidget(0, 4)
+        self.alerts_table.setObjectName("alerts_table")
+        self.alerts_table.setHorizontalHeaderLabels(["Время", "Тип", "Вердикт", "Источник"])
         self.alerts_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.alerts_table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         self.alerts_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.alerts_table.verticalHeader().setVisible(False)
+        self.alerts_table.verticalHeader().setDefaultSectionSize(62)
         self.alerts_table.horizontalHeader().setStretchLastSection(True)
+        self.alerts_table.setAlternatingRowColors(True)
+        self.alerts_table.setShowGrid(False)
+        self.alerts_table.setMinimumHeight(420)
         self.alerts_table.itemSelectionChanged.connect(self.show_selected_alert_details)
         table_layout.addWidget(self.alerts_table, 1)
 
-        details_card = QFrame()
-        details_card.setObjectName("panel_card")
-        details_layout = QVBoxLayout(details_card)
-        details_layout.setContentsMargins(16, 14, 16, 14)
-        details_layout.setSpacing(8)
+        details_panel = QWidget()
+        details_layout = QVBoxLayout(details_panel)
+        details_layout.setContentsMargins(0, 0, 0, 0)
+        details_layout.setSpacing(12)
 
-        details_title = QLabel("Детализация события")
-        details_title.setObjectName("section_title")
-        details_layout.addWidget(details_title)
+        summary_card = QFrame()
+        summary_card.setObjectName("alerts_summary_card")
+        summary_layout = QVBoxLayout(summary_card)
+        summary_layout.setContentsMargins(16, 14, 16, 14)
+        summary_layout.setSpacing(8)
+        self.alert_summary_title = QLabel("Alert Summary")
+        self.alert_summary_title.setObjectName("alerts_card_title")
+        self.alert_summary_verdict = QLabel("UNKNOWN")
+        self.alert_summary_verdict.setObjectName("verdict_badge_unknown")
+        self.alert_summary_time = QLabel("-")
+        self.alert_summary_time.setObjectName("alerts_body_text")
+        self.alert_summary_type = QLabel("-")
+        self.alert_summary_type.setObjectName("alerts_body_text")
+        self.alert_summary_source = QLabel("Source: -")
+        self.alert_summary_source.setObjectName("alerts_body_text")
+        self.alert_summary_destination = QLabel("Destination: -")
+        self.alert_summary_destination.setObjectName("alerts_body_text")
+        self.alert_summary_description = QLabel("-")
+        self.alert_summary_description.setObjectName("alerts_body_text")
+        self.alert_summary_description.setWordWrap(True)
+        summary_header = QHBoxLayout()
+        summary_header.setContentsMargins(0, 0, 0, 0)
+        summary_header.setSpacing(8)
+        summary_header.addWidget(self.alert_summary_title, 1)
+        summary_header.addWidget(self.alert_summary_verdict, 0, Qt.AlignmentFlag.AlignRight)
+        summary_layout.addLayout(summary_header)
+        summary_layout.addWidget(self.alert_summary_time)
+        summary_layout.addWidget(self.alert_summary_description)
+        summary_layout.addWidget(self.alert_summary_type)
+        summary_layout.addWidget(self.alert_summary_source)
+        summary_layout.addWidget(self.alert_summary_destination)
+        details_layout.addWidget(summary_card)
+
+        detail_section = QFrame()
+        detail_section.setObjectName("alerts_detail_section")
+        detail_section_layout = QVBoxLayout(detail_section)
+        detail_section_layout.setContentsMargins(16, 14, 16, 14)
+        detail_section_layout.setSpacing(8)
+        details_title = QLabel("ПОДРОБНОСТИ")
+        details_title.setObjectName("alerts_card_title")
+        detail_section_layout.addWidget(details_title)
 
         self.alert_details = QTextEdit()
+        self.alert_details.setObjectName("alerts_details_text")
         self.alert_details.setReadOnly(True)
-        details_layout.addWidget(self.alert_details, 1)
+        self.alert_details.setMinimumHeight(190)
+        detail_section_layout.addWidget(self.alert_details, 1)
+        details_layout.addWidget(detail_section, 1)
 
-        body.addWidget(table_card, 3)
-        body.addWidget(details_card, 2)
+        linked_card = QFrame()
+        linked_card.setObjectName("linked_session_card")
+        linked_layout = QVBoxLayout(linked_card)
+        linked_layout.setContentsMargins(16, 14, 16, 14)
+        linked_layout.setSpacing(8)
+        linked_title = QLabel("Linked Session Assessment")
+        linked_title.setObjectName("alerts_card_title")
+        self.linked_session_label = QLabel("Нет связанной оценки сессии")
+        self.linked_session_label.setObjectName("alerts_body_text")
+        self.linked_session_label.setWordWrap(True)
+        linked_layout.addWidget(linked_title)
+        linked_layout.addWidget(self.linked_session_label)
+        details_layout.addWidget(linked_card)
+
+        body.addWidget(table_card, 2)
+        body.addWidget(details_panel, 1)
         layout.addLayout(body, 1)
 
         self.alert_rows: list[tuple] = []
@@ -1117,6 +1570,100 @@ class MainWindow(QMainWindow):
             self.log_area.append(msg)
         self.log_area.verticalScrollBar().setValue(self.log_area.verticalScrollBar().maximum())
 
+    def _format_bytes(self, size: int) -> str:
+        value = float(size)
+        for unit in ("B", "KB", "MB", "GB", "TB"):
+            if value < 1024 or unit == "TB":
+                return f"{value:.1f} {unit}" if unit != "B" else f"{int(value)} B"
+            value /= 1024
+        return f"{size} B"
+
+    def _update_pcap_file_summary(self, file_path: str | None = None) -> None:
+        if not hasattr(self, "pcap_file_name_label"):
+            return
+
+        path_text = file_path or self.last_pcap_path
+        if path_text:
+            path = Path(path_text)
+            self.pcap_file_name_label.setText(path.name)
+            try:
+                self.pcap_file_size_label.setText(self._format_bytes(path.stat().st_size))
+            except OSError:
+                self.pcap_file_size_label.setText("-")
+        else:
+            self.pcap_file_name_label.setText("-")
+            self.pcap_file_size_label.setText("-")
+
+        packets = int(getattr(self.engine, "packet_count", 0) or 0)
+        self.pcap_packet_count_label.setText(f"{packets:,}")
+        current_session = getattr(self.engine, "current_session", None)
+        duration = current_session.duration_seconds() if current_session else 0
+        self.pcap_duration_label.setText(self._format_session_duration(duration))
+
+    def _refresh_pcap_assessment(self, assessment: dict | None, ready: bool) -> None:
+        if not hasattr(self, "pcap_score_label"):
+            return
+
+        if not ready or not assessment:
+            self.pcap_score_label.setText("-")
+            self.pcap_assessment_level_label.setText("No data")
+            self.pcap_assessment_summary_label.setText("Open a PCAP file to start analysis.")
+            return
+
+        self.pcap_score_label.setText(str(assessment.get("overall_score", "-")))
+        self.pcap_assessment_level_label.setText(assessment.get("security_level") or "-")
+        summary = assessment.get("summary") or "-"
+        threat = assessment.get("threat_level") or "-"
+        incident = assessment.get("incident_probability") or "-"
+        confidence = assessment.get("confidence") or "-"
+        self.pcap_assessment_summary_label.setText(
+            f"{summary}\nThreat: {threat} | Incident: {incident} | Confidence: {confidence}"
+        )
+
+    def _append_pcap_alert_from_log(self, msg: str) -> None:
+        if not hasattr(self, "pcap_alerts_table"):
+            return
+
+        plain = self._plain_log(msg)
+        verdict = re.search(r"\[VERDICT\]\s+(\w+)\s+\|\s+([^|]+)\|\s*(.+)$", plain)
+        incident = re.search(r"\[INCIDENT\]\s+(\w+)\s+\|\s+host=([^|]+)\|\s*(.+)$", plain)
+        ioc = re.search(r"\[IOC(?: DOMAIN)? MATCH\]\s+(.+)$", plain)
+
+        if verdict:
+            severity, flow, detail = verdict.groups()
+            alert_type = "VERDICT"
+            description = f"{flow.strip()} | {detail.strip()}"
+        elif incident:
+            severity, host, detail = incident.groups()
+            alert_type = "INCIDENT"
+            description = f"{host.strip()} | {detail.strip()}"
+        elif ioc:
+            severity = "IOC"
+            alert_type = "IOC"
+            description = ioc.group(1).strip()
+        else:
+            return
+
+        row = self.pcap_alerts_table.rowCount()
+        self.pcap_alerts_table.insertRow(row)
+        values = [datetime.now().strftime("%Y-%m-%d %H:%M:%S"), alert_type, severity.upper(), description]
+        for col, value in enumerate(values):
+            self.pcap_alerts_table.setItem(row, col, QTableWidgetItem(value))
+        self.pcap_alerts_table.resizeColumnsToContents()
+
+        if hasattr(self, "pcap_conversations_list"):
+            self.pcap_conversations_list.insertItem(0, description)
+            while self.pcap_conversations_list.count() > 20:
+                self.pcap_conversations_list.takeItem(self.pcap_conversations_list.count() - 1)
+
+    def clear_pcap_view(self) -> None:
+        if hasattr(self, "pcap_log_area"):
+            self.pcap_log_area.clear()
+        if hasattr(self, "pcap_alerts_table"):
+            self.pcap_alerts_table.setRowCount(0)
+        if hasattr(self, "pcap_conversations_list"):
+            self.pcap_conversations_list.clear()
+
     # -------- data / UI refresh --------
     def load_interfaces_to_combo(self):
         self.iface_combo.clear()
@@ -1144,12 +1691,29 @@ class MainWindow(QMainWindow):
             self.stats_list.addItem(f"{ip} — {count} событий")
 
     def update_stats_display(self) -> None:
-        self.pcap_stats_list.clear()
+        if hasattr(self, "pcap_stats_list"):
+            self.pcap_stats_list.clear()
         merged = Counter(self.threat_counter)
         merged.update(self.engine.attacker_stats)
-        for ip, count in merged.most_common(10):
-            line = f"{ip} → {count} событий"
-            self.pcap_stats_list.addItem(line)
+        if hasattr(self, "pcap_stats_list"):
+            if not merged:
+                self.pcap_stats_list.addItem("No suspicious IPs yet")
+            for ip, count in merged.most_common(10):
+                line = f"{ip} -> {count} events"
+                self.pcap_stats_list.addItem(line)
+        if hasattr(self, "pcap_protocol_list"):
+            packets = int(getattr(self.engine, "packet_count", 0) or 0)
+            self.pcap_protocol_list.clear()
+            if packets:
+                ioc_count = len(getattr(self.engine, "ioc_seen", set())) + len(getattr(self.engine, "domain_ioc_seen", set()))
+                self.pcap_protocol_list.addItems([
+                    f"Observed packets - {packets:,}",
+                    f"Anomalies - {int(getattr(self.engine, 'total_anom', 0) or 0):,}",
+                    f"IOC matches - {ioc_count:,}",
+                ])
+            else:
+                self.pcap_protocol_list.addItems(["TCP - pending", "UDP - pending", "ICMP - pending", "Other - pending"])
+        self._update_pcap_file_summary()
         self.update_top_ips()
 
     def flush_live_ui_updates(self) -> None:
@@ -1209,6 +1773,7 @@ class MainWindow(QMainWindow):
 
         self.ioc_label.setText(str(ioc_count))
         self.infected_label.setText(str(infected_count))
+        self._refresh_pcap_assessment(assessment, ready)
         self._update_dashboard_comparison()
 
     def _update_dashboard_comparison(self):
@@ -1235,6 +1800,8 @@ class MainWindow(QMainWindow):
         anom = int(getattr(self.engine, "total_anom", 0))
         anom_rate = anom / seen
         self.plot.push(pps_eff=pps_eff, anom_rate=anom_rate)
+        if hasattr(self, "pcap_plot"):
+            self.pcap_plot.push(pps_eff=pps_eff, anom_rate=anom_rate)
 
     def append_log(self, msg: str) -> None:
         self.log_buffer.append(msg)
@@ -1246,6 +1813,7 @@ class MainWindow(QMainWindow):
             self.pcap_log_area.verticalScrollBar().setValue(
                 self.pcap_log_area.verticalScrollBar().maximum()
             )
+            self._append_pcap_alert_from_log(msg)
 
         self._append_to_events_if_needed(msg)
         if self._is_log_message_visible(msg):
@@ -1343,27 +1911,100 @@ class MainWindow(QMainWindow):
         )
         self.render_alert_rows()
 
+    def _verdict_badge_object(self, verdict: str) -> str:
+        text = (verdict or "").upper()
+        if text in {"INFO", "LOW", "NORMAL", "ANOMALY"}:
+            return "verdict_badge_info"
+        if text in {"WARNING", "WARN", "MEDIUM"}:
+            return "verdict_badge_warning"
+        if text in {"SUSPICIOUS"}:
+            return "verdict_badge_suspicious"
+        if text in {"CRITICAL", "HIGH", "MALICIOUS", "INCIDENT"}:
+            return "verdict_badge_critical"
+        return "verdict_badge_unknown"
+
+    def _set_verdict_badge(self, label: QLabel, verdict: str) -> None:
+        label.setText(verdict or "UNKNOWN")
+        label.setObjectName(self._verdict_badge_object(verdict))
+        self._refresh_widget_style(label)
+
+    def _extract_alert_endpoints(self, description: str) -> tuple[str, str]:
+        text = description or ""
+        src = re.search(r"\bsrc=([^|\s]+)", text, flags=re.IGNORECASE)
+        dst = re.search(r"\bdst=([^|\s]+)", text, flags=re.IGNORECASE)
+        if src or dst:
+            return (src.group(1) if src else "-", dst.group(1) if dst else "-")
+
+        flow = re.search(r"(\b(?:\d{1,3}\.){3}\d{1,3}\b)\s*(?:->|→)\s*(\b(?:\d{1,3}\.){3}\d{1,3}\b)", text)
+        if flow:
+            return flow.group(1), flow.group(2)
+
+        ips = re.findall(r"\b(?:\d{1,3}\.){3}\d{1,3}\b", text)
+        unique_ips = list(dict.fromkeys(ips))
+        if len(unique_ips) >= 2:
+            return unique_ips[0], unique_ips[1]
+        if len(unique_ips) == 1:
+            return unique_ips[0], "-"
+        return "-", "-"
+
+    def _clear_alert_details_panel(self) -> None:
+        if hasattr(self, "alert_summary_title"):
+            self.alert_summary_title.setText("Alert Summary")
+            self._set_verdict_badge(self.alert_summary_verdict, "UNKNOWN")
+            self.alert_summary_time.setText("-")
+            self.alert_summary_type.setText("-")
+            self.alert_summary_source.setText("Source: -")
+            self.alert_summary_destination.setText("Destination: -")
+            self.alert_summary_description.setText("-")
+            self.linked_session_label.setText("Нет связанной оценки сессии")
+        if hasattr(self, "alert_details"):
+            self.alert_details.clear()
+
     def render_alert_rows(self):
         self.alerts_table.setRowCount(0)
         self.alerts_count_label.setText(f"Alerts: {len(self.alert_rows)}")
-        self.alert_details.clear()
+        self._clear_alert_details_panel()
+        if hasattr(self, "alerts_empty_label"):
+            self.alerts_empty_label.setVisible(not bool(self.alert_rows))
+            self.alerts_table.setVisible(bool(self.alert_rows))
 
         for row_idx, row in enumerate(self.alert_rows):
             alert_id, timestamp, session_id, alert_type, description = row
+            verdict = self._extract_alert_verdict(alert_type or "", description or "")
+            display_verdict = verdict if verdict != "-" else "UNKNOWN"
+            src, dst = self._extract_alert_endpoints(description or "")
+            source_text = src if src != "-" else self._extract_alert_ips(description or "")
+            if dst != "-":
+                source_text = f"{source_text} -> {dst}" if source_text != "-" else dst
             self.alerts_table.insertRow(row_idx)
+            self.alerts_table.setRowHeight(row_idx, 62)
             values = [
-                str(alert_id),
                 timestamp or "-",
-                str(session_id) if session_id is not None else "-",
                 alert_type or "-",
-                description or "",
+                display_verdict,
+                source_text,
             ]
             for col, value in enumerate(values):
                 item = QTableWidgetItem(value)
                 item.setData(Qt.ItemDataRole.UserRole, row_idx)
+                item.setToolTip(value)
+                if col == 2:
+                    item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                else:
+                    item.setTextAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
                 self.alerts_table.setItem(row_idx, col, item)
+            verdict_badge = QLabel(display_verdict)
+            verdict_badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            verdict_badge.setToolTip(display_verdict)
+            self._set_verdict_badge(verdict_badge, display_verdict)
+            self.alerts_table.setCellWidget(row_idx, 2, verdict_badge)
 
         self.alerts_table.resizeColumnsToContents()
+        self.alerts_table.setColumnWidth(0, max(self.alerts_table.columnWidth(0), 170))
+        self.alerts_table.setColumnWidth(1, max(self.alerts_table.columnWidth(1), 150))
+        self.alerts_table.setColumnWidth(2, max(self.alerts_table.columnWidth(2), 128))
+        if self.alert_rows:
+            self.alerts_table.setCurrentCell(0, 0)
 
     def _extract_alert_verdict(self, alert_type: str, description: str) -> str:
         text = description or ""
@@ -1388,40 +2029,52 @@ class MainWindow(QMainWindow):
     def show_selected_alert_details(self):
         selected = self.alerts_table.selectedItems()
         if not selected:
-            self.alert_details.clear()
+            self._clear_alert_details_panel()
             return
 
         row_idx = selected[0].data(Qt.ItemDataRole.UserRole)
         if row_idx is None or row_idx >= len(self.alert_rows):
-            self.alert_details.clear()
+            self._clear_alert_details_panel()
             return
 
         alert_id, timestamp, session_id, alert_type, description = self.alert_rows[row_idx]
         verdict = self._extract_alert_verdict(alert_type or "", description or "")
+        display_verdict = verdict if verdict != "-" else "UNKNOWN"
         ips = self._extract_alert_ips(description or "")
-        session_context = ""
+        src, dst = self._extract_alert_endpoints(description or "")
+        session_context = "Нет связанной оценки сессии"
         if session_id is not None:
             session_data = get_session_record(session_id)
             if session_data:
                 session_context = f"""
-
-Linked session assessment:
+Session ID: {session_id}
 IB Score: {session_data.get('final_ib_score') if session_data.get('final_ib_score') is not None else '-'}
 IB Level: {session_data.get('final_ib_level') or '-'}
 Threat Level: {session_data.get('threat_level') or '-'}
+Incident Probability: {session_data.get('incident_probability') or '-'}
 Confidence: {session_data.get('confidence') or '-'}
 Summary: {session_data.get('summary_text') or '-'}
-"""
+""".strip()
+        if hasattr(self, "alert_summary_title"):
+            self.alert_summary_title.setText(f"Alert Details: ALR-{int(alert_id):03d}" if str(alert_id).isdigit() else f"Alert Details: {alert_id}")
+            self._set_verdict_badge(self.alert_summary_verdict, display_verdict)
+            self.alert_summary_time.setText(timestamp or "-")
+            self.alert_summary_type.setText(f"Type: {alert_type or '-'}")
+            self.alert_summary_source.setText(f"Source: {src}")
+            self.alert_summary_destination.setText(f"Destination: {dst}")
+            self.alert_summary_description.setText(description or "-")
+            self.linked_session_label.setText(session_context)
         detail = f"""ID: {alert_id}
 Time: {timestamp or '-'}
 Session ID: {session_id if session_id is not None else '-'}
 Type: {alert_type or '-'}
-Verdict: {verdict}
+Verdict: {display_verdict}
+Source: {src}
+Destination: {dst}
 IPs: {ips}
 
 Description:
 {description or '-'}
-{session_context}
 """
         self.alert_details.setText(detail)
 
@@ -1462,7 +2115,7 @@ Description:
                 visible_rows.append(row)
 
         if not visible_rows:
-            item = QListWidgetItem("РЎРµСЃСЃРёР№ РїРѕРєР° РЅРµС‚")
+            item = QListWidgetItem("Сессий пока нет")
             item.setData(Qt.ItemDataRole.UserRole, None)
             item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsSelectable)
             self.sessions_list.addItem(item)
@@ -1486,8 +2139,8 @@ Description:
             self.session_threat_badge.setText("Threat: -")
             self.session_incident_badge.setText("Incident: -")
             self.session_confidence_badge.setText("Confidence: -")
-            self.session_explanation_label.setText("Р’С‹Р±РµСЂРёС‚Рµ СЃРµСЃСЃРёСЋ СЃР»РµРІР°.")
-            self.session_comparison_label.setText("РќРµС‚ РґР°РЅРЅС‹С… РґР»СЏ СЃСЂР°РІРЅРµРЅРёСЏ")
+            self.session_explanation_label.setText("Выберите сессию слева.")
+            self.session_comparison_label.setText("Нет данных для сравнения")
             for label in self.session_stat_labels.values():
                 label.setText("-")
 
@@ -1519,7 +2172,7 @@ Description:
             self.session_incident_badge.setText(f"Incident: {s.get('incident_probability') or '-'}")
             self.session_confidence_badge.setText(f"Confidence: {s.get('confidence') or '-'}")
             self.session_explanation_label.setText(s.get("summary_text") or assessment_details or "-")
-            self.session_comparison_label.setText(comparison or "РќРµС‚ РґР°РЅРЅС‹С… РґР»СЏ СЃСЂР°РІРЅРµРЅРёСЏ")
+            self.session_comparison_label.setText(comparison or "Нет данных для сравнения")
             self.session_stat_labels["packets"].setText(f"{int(s.get('total_packets') or 0):,}")
             self.session_stat_labels["duration"].setText(self._format_session_duration(s.get("duration_sec")))
             self.session_stat_labels["anomalies"].setText(f"{int(s.get('total_anomalies') or 0):,}")
@@ -1626,6 +2279,77 @@ Report path:
                 f"Не удалось сформировать HTML-отчёт:\n{type(e).__name__}: {e}",
             )
 
+    def refresh_settings_profile_page(self) -> None:
+        if not hasattr(self, "settings_profiles_list"):
+            return
+
+        pm = ProfileManager()
+        active_filename = pm.get_active_filename() or "default.json"
+        profiles = pm.list_profiles()
+        active_profile = pm.load_profile(active_filename)
+        data = active_profile.data or {}
+        ml = data.get("ml") or {}
+
+        self.settings_profiles_list.clear()
+        display_profiles = ["Default", "High-Sensitivity", "Low-Latency", "Custom 1", "Custom 2"]
+        active_name = active_profile.name or "Default"
+        active_row = 0
+        for idx, name in enumerate(display_profiles):
+            item = QListWidgetItem(name)
+            item.setData(Qt.ItemDataRole.UserRole, active_filename if idx == 0 else None)
+            if name.lower() == active_name.lower() or (idx == 0 and active_filename == "default.json"):
+                active_row = idx
+            self.settings_profiles_list.addItem(item)
+        if self.settings_profiles_list.count():
+            self.settings_profiles_list.setCurrentRow(active_row)
+
+        profile_path = pm.profiles_dir / active_profile.filename
+        try:
+            updated = datetime.fromtimestamp(profile_path.stat().st_mtime).strftime("%Y-%m-%d %H:%M:%S")
+        except OSError:
+            updated = "-"
+
+        iface = self.iface_combo.currentText() if hasattr(self, "iface_combo") and self.iface_combo.count() else "Auto-select"
+        sample_factor = int(data.get("sample_factor", getattr(self.engine, "sample_factor", 1)) or 1)
+        pps_window = data.get("pps_window_sec", "-")
+        scan_threshold = data.get("scan_ports_threshold", "-")
+        dos_threshold = data.get("dos_pps_eff_threshold", "-")
+        contamination = float(ml.get("contamination", 0.0) or 0.0)
+        train_size = ml.get("train_size", ml.get("train_packets", "-"))
+        estimators = ml.get("n_estimators", "-")
+        ioc_count = len(getattr(self.engine, "malicious_ips", [])) + len(getattr(self.engine, "malicious_domains", []))
+        sessions_count = len(get_sessions(limit=200))
+        alerts_count = len(query_alerts(limit=200))
+        db_path = Path(__file__).resolve().parents[1] / "storage" / "traffic_data.db"
+        short_db_path = f".../{db_path.parent.name}/{db_path.name}"
+        ml_percent = min(100, max(0, int(contamination * 10000)))
+        anomaly_percent = min(100, max(0, int(int(scan_threshold or 0) / 100 * 100))) if str(scan_threshold).isdigit() else 0
+
+        self.settings_status_title_lbl.setText(f"Active Profile Status: {active_profile.name}")
+        self.profile_name_lbl.setText(iface)
+        self.settings_profile_file_lbl.setText(active_profile.filename)
+        self.settings_rules_count_lbl.setText(f"{scan_threshold} scan / {dos_threshold} pps")
+        self.settings_model_lbl.setText(f"Isolation Forest, {estimators} trees")
+        self.settings_updated_lbl.setText(updated)
+
+        self.settings_interface_lbl.setText(iface)
+        self.settings_interface_lbl.setToolTip(iface)
+        self.sample_factor_lbl.setText(f"1 / {sample_factor} packets")
+        self.settings_live_lbl.setText("ON")
+        self.settings_dpi_lbl.setText("ON")
+        self.settings_rule_lbl.setText(f"Standard selected   |   window {pps_window}s")
+        self.ml_status_lbl.setText(f"{ml_percent}%  | train {train_size}, contamination {contamination:.3f}")
+        self.settings_anom_lbl.setText(f"{anomaly_percent}%  | scan {scan_threshold}, DoS {dos_threshold}")
+        self.settings_ioc_path_lbl.setText(short_db_path)
+        self.settings_ioc_path_lbl.setToolTip(str(db_path))
+        self.ioc_count_lbl.setText(f"{ioc_count} indicators loaded")
+        self.settings_feeds_lbl.setText("AlienVault   MISP")
+        self.settings_report_lbl.setText("HTML")
+        self.settings_report_options_lbl.setText("Incidents on  |  IOC matches on  |  Raw logs off")
+        self.settings_db_path_lbl.setText(short_db_path)
+        self.settings_db_path_lbl.setToolTip(str(db_path))
+        self.settings_db_counts_lbl.setText(f"{sessions_count} sessions  |  {alerts_count} alerts")
+
     # -------- profile --------
     def apply_profile_on_startup(self) -> None:
         try:
@@ -1635,6 +2359,7 @@ Report path:
             self.engine.apply_profile(prof.data, profile_name=prof.filename.replace(".json", ""))
             self.append_log(f"<b style='color:#2563eb;'>[PROFILE] Применён: {prof.name} ({prof.filename})</b>")
             self.update_assessment_panel()
+            self.refresh_settings_profile_page()
         except Exception as e:
             self.append_log(f"<span style='color:#dc2626;'>[PROFILE] Ошибка: {type(e).__name__}: {e}</span>")
 
@@ -1648,6 +2373,7 @@ Report path:
             self.engine.apply_profile(pr.data, profile_name=Path(active).stem)
             self.append_log(f"<b style='color:#2563eb;'>[PROFILE] Активный: {pr.name} ({active})</b>")
             self.update_assessment_panel()
+            self.refresh_settings_profile_page()
         except Exception as e:
             self.append_log(f"<span style='color:#dc2626;'>[PROFILE ERROR] {type(e).__name__}: {e}</span>")
 
@@ -1670,6 +2396,8 @@ Report path:
 
         self.action_btn.setEnabled(True)
         self.pcap_btn.setEnabled(True)
+        if hasattr(self, "open_main_btn"):
+            self.open_main_btn.setEnabled(True)
         self.settings_btn.setEnabled(True)
         self.settings_page_btn.setEnabled(True)
 
@@ -1679,6 +2407,7 @@ Report path:
 
         self.set_status_text("Статус: ожидание запуска")
         self.update_assessment_panel()
+        self._update_pcap_file_summary()
         self.append_log("<b style='color:#2563eb;'>[SYSTEM] Мониторинг / анализ остановлен.</b>")
 
     # -------- actions --------
@@ -1698,12 +2427,16 @@ Report path:
 
         self.switch_page(1)
         self.last_pcap_path = file_path
+        self.clear_pcap_view()
+        self._update_pcap_file_summary(file_path)
         self.is_monitoring = True
         self.current_mode = "pcap"
 
         self.action_btn.setEnabled(False)
         self.settings_btn.setEnabled(False)
         self.pcap_btn.setEnabled(False)
+        if hasattr(self, "open_main_btn"):
+            self.open_main_btn.setEnabled(False)
         self.settings_page_btn.setEnabled(False)
 
         self.set_status_text("Статус: offline-анализ PCAP")
@@ -1721,6 +2454,8 @@ Report path:
 
             self.settings_btn.setEnabled(False)
             self.pcap_btn.setEnabled(False)
+            if hasattr(self, "open_main_btn"):
+                self.open_main_btn.setEnabled(False)
             self.settings_page_btn.setEnabled(False)
 
             self.set_status_text("Статус: live-мониторинг")
@@ -1806,6 +2541,8 @@ Report path:
 
     def switch_page(self, index: int) -> None:
         self.pages.setCurrentIndex(index)
+        if index == 2:
+            self.refresh_settings_profile_page()
         if index == 4 and hasattr(self, "alerts_table"):
             self.populate_alert_filters()
             self.load_alerts_history()
