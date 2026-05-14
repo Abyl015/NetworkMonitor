@@ -574,7 +574,7 @@ class MainWindow(QMainWindow):
         header.setContentsMargins(0, 0, 0, 0)
         header.setSpacing(12)
 
-        title = QLabel("PCAP File Summary")
+        title = QLabel("PCAP Analysis")
         title.setObjectName("pcap_page_title")
         header.addWidget(title, 1)
 
@@ -637,7 +637,7 @@ class MainWindow(QMainWindow):
         assessment_card.setObjectName("pcap_detail_card")
         assessment_layout = QVBoxLayout(assessment_card)
         assessment_layout.setContentsMargins(14, 12, 14, 12)
-        assessment_layout.setSpacing(8)
+        assessment_layout.setSpacing(10)
         assessment_title = QLabel("Security Assessment")
         assessment_title.setObjectName("pcap_card_title")
         assessment_layout.addWidget(assessment_title)
@@ -653,9 +653,9 @@ class MainWindow(QMainWindow):
         assessment_text = QVBoxLayout()
         assessment_text.setContentsMargins(0, 0, 0, 0)
         assessment_text.setSpacing(4)
-        self.pcap_assessment_level_label = QLabel("No data")
+        self.pcap_assessment_level_label = QLabel("Нет данных")
         self.pcap_assessment_level_label.setObjectName("pcap_assessment_level")
-        self.pcap_assessment_summary_label = QLabel("Open a PCAP file to start analysis.")
+        self.pcap_assessment_summary_label = QLabel("Откройте PCAP-файл для анализа")
         self.pcap_assessment_summary_label.setObjectName("pcap_body_text")
         self.pcap_assessment_summary_label.setWordWrap(True)
         assessment_text.addWidget(self.pcap_assessment_level_label)
@@ -679,7 +679,9 @@ class MainWindow(QMainWindow):
         protocol_layout.addWidget(protocol_title)
         self.pcap_protocol_list = QListWidget()
         self.pcap_protocol_list.setObjectName("pcap_compact_list")
-        self.pcap_protocol_list.addItems(["TCP - pending", "UDP - pending", "ICMP - pending", "Other - pending"])
+        protocol_empty = QListWidgetItem("Откройте PCAP-файл для анализа")
+        protocol_empty.setData(Qt.ItemDataRole.UserRole, "empty")
+        self.pcap_protocol_list.addItem(protocol_empty)
         protocol_layout.addWidget(self.pcap_protocol_list)
         analysis_grid.addWidget(protocol_card, 0, 0)
 
@@ -693,6 +695,9 @@ class MainWindow(QMainWindow):
         top_ips_layout.addWidget(top_ips_title)
         self.pcap_stats_list = QListWidget()
         self.pcap_stats_list.setObjectName("pcap_compact_list")
+        stats_empty = QListWidgetItem("Данные появятся после анализа")
+        stats_empty.setData(Qt.ItemDataRole.UserRole, "empty")
+        self.pcap_stats_list.addItem(stats_empty)
         top_ips_layout.addWidget(self.pcap_stats_list)
         analysis_grid.addWidget(top_ips_card, 0, 1)
 
@@ -706,6 +711,9 @@ class MainWindow(QMainWindow):
         conversations_layout.addWidget(conversations_title)
         self.pcap_conversations_list = QListWidget()
         self.pcap_conversations_list.setObjectName("pcap_compact_list")
+        conversations_empty = QListWidgetItem("Данные появятся после анализа")
+        conversations_empty.setData(Qt.ItemDataRole.UserRole, "empty")
+        self.pcap_conversations_list.addItem(conversations_empty)
         conversations_layout.addWidget(self.pcap_conversations_list)
         analysis_grid.addWidget(conversations_card, 0, 2)
         analysis_grid.setColumnStretch(0, 1)
@@ -728,7 +736,7 @@ class MainWindow(QMainWindow):
         self.pcap_alerts_table.horizontalHeader().setStretchLastSection(True)
         self.pcap_alerts_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.pcap_alerts_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
-        self.pcap_alerts_table.setMinimumHeight(112)
+        self.pcap_alerts_table.setMinimumHeight(132)
         alerts_layout.addWidget(self.pcap_alerts_table)
         layout.addWidget(alerts_card)
 
@@ -749,7 +757,7 @@ class MainWindow(QMainWindow):
         self.pcap_log_area.setObjectName("pcap_log_panel")
         self.pcap_log_area.setReadOnly(True)
         self.pcap_log_area.document().setMaximumBlockCount(self.max_log_messages)
-        self.pcap_log_area.setMinimumHeight(180)
+        self.pcap_log_area.setMinimumHeight(190)
         log_layout.addWidget(self.pcap_log_area)
         bottom_grid.addWidget(log_card, 0, 0)
 
@@ -1606,8 +1614,8 @@ class MainWindow(QMainWindow):
 
         if not ready or not assessment:
             self.pcap_score_label.setText("-")
-            self.pcap_assessment_level_label.setText("No data")
-            self.pcap_assessment_summary_label.setText("Open a PCAP file to start analysis.")
+            self.pcap_assessment_level_label.setText("Нет данных")
+            self.pcap_assessment_summary_label.setText("Откройте PCAP-файл для анализа")
             return
 
         self.pcap_score_label.setText(str(assessment.get("overall_score", "-")))
@@ -1652,6 +1660,8 @@ class MainWindow(QMainWindow):
         self.pcap_alerts_table.resizeColumnsToContents()
 
         if hasattr(self, "pcap_conversations_list"):
+            if self.pcap_conversations_list.count() == 1 and self.pcap_conversations_list.item(0).data(Qt.ItemDataRole.UserRole) == "empty":
+                self.pcap_conversations_list.clear()
             self.pcap_conversations_list.insertItem(0, description)
             while self.pcap_conversations_list.count() > 20:
                 self.pcap_conversations_list.takeItem(self.pcap_conversations_list.count() - 1)
@@ -1661,8 +1671,21 @@ class MainWindow(QMainWindow):
             self.pcap_log_area.clear()
         if hasattr(self, "pcap_alerts_table"):
             self.pcap_alerts_table.setRowCount(0)
+        if hasattr(self, "pcap_protocol_list"):
+            self.pcap_protocol_list.clear()
+            item = QListWidgetItem("Откройте PCAP-файл для анализа")
+            item.setData(Qt.ItemDataRole.UserRole, "empty")
+            self.pcap_protocol_list.addItem(item)
+        if hasattr(self, "pcap_stats_list"):
+            self.pcap_stats_list.clear()
+            item = QListWidgetItem("Данные появятся после анализа")
+            item.setData(Qt.ItemDataRole.UserRole, "empty")
+            self.pcap_stats_list.addItem(item)
         if hasattr(self, "pcap_conversations_list"):
             self.pcap_conversations_list.clear()
+            item = QListWidgetItem("Данные появятся после анализа")
+            item.setData(Qt.ItemDataRole.UserRole, "empty")
+            self.pcap_conversations_list.addItem(item)
 
     # -------- data / UI refresh --------
     def load_interfaces_to_combo(self):
@@ -1697,7 +1720,9 @@ class MainWindow(QMainWindow):
         merged.update(self.engine.attacker_stats)
         if hasattr(self, "pcap_stats_list"):
             if not merged:
-                self.pcap_stats_list.addItem("No suspicious IPs yet")
+                item = QListWidgetItem("Нет данных")
+                item.setData(Qt.ItemDataRole.UserRole, "empty")
+                self.pcap_stats_list.addItem(item)
             for ip, count in merged.most_common(10):
                 line = f"{ip} -> {count} events"
                 self.pcap_stats_list.addItem(line)
@@ -1705,14 +1730,11 @@ class MainWindow(QMainWindow):
             packets = int(getattr(self.engine, "packet_count", 0) or 0)
             self.pcap_protocol_list.clear()
             if packets:
-                ioc_count = len(getattr(self.engine, "ioc_seen", set())) + len(getattr(self.engine, "domain_ioc_seen", set()))
-                self.pcap_protocol_list.addItems([
-                    f"Observed packets - {packets:,}",
-                    f"Anomalies - {int(getattr(self.engine, 'total_anom', 0) or 0):,}",
-                    f"IOC matches - {ioc_count:,}",
-                ])
+                item = QListWidgetItem("Нет данных")
             else:
-                self.pcap_protocol_list.addItems(["TCP - pending", "UDP - pending", "ICMP - pending", "Other - pending"])
+                item = QListWidgetItem("Откройте PCAP-файл для анализа")
+            item.setData(Qt.ItemDataRole.UserRole, "empty")
+            self.pcap_protocol_list.addItem(item)
         self._update_pcap_file_summary()
         self.update_top_ips()
 

@@ -491,7 +491,7 @@ QLabel#pcap_state_label {
 
 QLabel#pcap_assessment_level {
     color: #6b4f12;
-    font-size: 20px;
+    font-size: 21px;
     font-weight: 800;
     padding: 0;
 }
@@ -750,8 +750,16 @@ QPushButton#sessions_filter_btn {
 QPushButton#pcap_action_btn {
     min-height: 34px;
     border-radius: 7px;
+    border: 1px solid #cfd8e3;
+    background-color: #ffffff;
+    color: #1f2937;
     font-weight: 600;
     padding: 0 12px;
+}
+
+QPushButton#pcap_action_btn:hover {
+    background-color: #eff6ff;
+    border-color: #93c5fd;
 }
 
 QPushButton#alerts_filter_button,
@@ -845,15 +853,25 @@ QListWidget#pcap_compact_list {
 }
 
 QListWidget#pcap_compact_list::item {
-    padding: 4px 2px;
+    padding: 5px 2px;
     border: none;
-    color: #020617;
-    font-size: 12px;
+    color: #111827;
+    font-size: 13px;
 }
 
 QTableWidget#pcap_alerts_table {
+    background-color: #ffffff;
+    border: 1px solid #d7dfe8;
     border-radius: 6px;
+    gridline-color: #e5e7eb;
+    selection-background-color: #dbeafe;
+    selection-color: #020617;
+    alternate-background-color: #f8fafc;
     font-size: 12px;
+}
+
+QTableWidget#pcap_alerts_table::item {
+    padding: 7px 8px;
 }
 
 QTableWidget#alerts_table {
@@ -888,9 +906,9 @@ QTextEdit#alerts_details_text {
 }
 
 QTextEdit#pcap_log_panel {
-    background-color: #ffffff;
-    color: #020617;
-    border: 1px solid #dbe3ea;
+    background-color: #0f172a;
+    color: #d1d5db;
+    border: 1px solid #1e293b;
     border-radius: 6px;
     font-family: "Consolas", "Courier New", monospace;
     font-size: 12px;
