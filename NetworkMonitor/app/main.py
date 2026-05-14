@@ -12,7 +12,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 from PyQt6.QtCore import QDateTime, QSize, Qt, QTimer
-from PyQt6.QtGui import QColor
+from PyQt6.QtGui import QBrush, QColor
 from PyQt6.QtWidgets import (
     QApplication,
     QAbstractItemView,
@@ -1305,6 +1305,7 @@ class MainWindow(QMainWindow):
         self.alerts_table.setAlternatingRowColors(True)
         self.alerts_table.setShowGrid(False)
         self.alerts_table.setMinimumHeight(420)
+        self._configure_alerts_table_columns()
         self.alerts_table.itemSelectionChanged.connect(self.show_selected_alert_details)
         table_layout.addWidget(self.alerts_table, 1)
 
@@ -1381,8 +1382,12 @@ class MainWindow(QMainWindow):
         layout.addLayout(body, 1)
 
         self.alert_rows: list[tuple] = []
-        self.populate_alert_filters()
-        self.load_alerts_history()
+        self._alerts_loaded = False
+        self._alerts_dirty = False
+        self._alert_filters_loaded = False
+        self._last_alert_query_params = None
+        self._alert_session_context_cache = {}
+        self._clear_alert_details_panel()
         return page
 
     # ---------- helpers ----------
@@ -1830,6 +1835,9 @@ class MainWindow(QMainWindow):
         if len(self.log_buffer) > self.max_log_messages:
             del self.log_buffer[: len(self.log_buffer) - self.max_log_messages]
 
+        if getattr(self, "is_monitoring", False):
+            self._mark_alerts_dirty()
+
         if hasattr(self, "pcap_log_area"):
             self.pcap_log_area.append(msg)
             self.pcap_log_area.verticalScrollBar().setValue(
@@ -1875,6 +1883,46 @@ class MainWindow(QMainWindow):
                 self.events_list.takeItem(self.events_list.count() - 1)
 
     # -------- alerts history --------
+    def _mark_alerts_dirty(self) -> None:
+        if hasattr(self, "_alerts_dirty"):
+            self._alerts_dirty = True
+
+    def _configure_alerts_table_columns(self) -> None:
+        if not hasattr(self, "alerts_table"):
+            return
+        self.alerts_table.setColumnWidth(0, 170)
+        self.alerts_table.setColumnWidth(1, 150)
+        self.alerts_table.setColumnWidth(2, 128)
+        self.alerts_table.setColumnWidth(3, 260)
+
+    def _ensure_alert_filters_loaded(self) -> None:
+        if not getattr(self, "_alert_filters_loaded", False):
+            self.populate_alert_filters()
+
+    def _current_alert_query_params(self) -> tuple:
+        session_id = self.alert_session_filter.currentData()
+        alert_type = self.alert_type_filter.currentData()
+        verdict = self.alert_verdict_filter.currentData()
+        search_text = self.alert_search_input.text().strip() or None
+
+        started_from = None
+        started_to = None
+        if self.alert_period_checkbox.isChecked():
+            started_from = self._alert_filter_datetime(self.alert_from_dt)
+            started_to = self._alert_filter_datetime(self.alert_to_dt)
+
+        return session_id, started_from, started_to, alert_type, verdict, search_text
+
+    def ensure_alerts_loaded(self) -> None:
+        self._ensure_alert_filters_loaded()
+        query_params = self._current_alert_query_params()
+        if (
+            not getattr(self, "_alerts_loaded", False)
+            or getattr(self, "_alerts_dirty", False)
+            or query_params != getattr(self, "_last_alert_query_params", None)
+        ):
+            self.load_alerts_history()
+
     def _toggle_alert_period_filters(self):
         enabled = self.alert_period_checkbox.isChecked()
         self.alert_from_dt.setEnabled(enabled)
@@ -1896,6 +1944,7 @@ class MainWindow(QMainWindow):
         self.alert_verdict_filter.addItem("Любой verdict", None)
         for verdict in ("malicious", "suspicious", "anomaly", "normal"):
             self.alert_verdict_filter.addItem(verdict.upper(), verdict)
+        self._alert_filters_loaded = True
 
     def reset_alert_filters(self):
         self.populate_alert_filters()
@@ -1911,16 +1960,9 @@ class MainWindow(QMainWindow):
         return widget.dateTime().toString("yyyy-MM-dd HH:mm:ss")
 
     def load_alerts_history(self):
-        session_id = self.alert_session_filter.currentData()
-        alert_type = self.alert_type_filter.currentData()
-        verdict = self.alert_verdict_filter.currentData()
-        search_text = self.alert_search_input.text().strip() or None
-
-        started_from = None
-        started_to = None
-        if self.alert_period_checkbox.isChecked():
-            started_from = self._alert_filter_datetime(self.alert_from_dt)
-            started_to = self._alert_filter_datetime(self.alert_to_dt)
+        self._ensure_alert_filters_loaded()
+        query_params = self._current_alert_query_params()
+        session_id, started_from, started_to, alert_type, verdict, search_text = query_params
 
         self.alert_rows = query_alerts(
             session_id=session_id,
@@ -1931,6 +1973,10 @@ class MainWindow(QMainWindow):
             search_text=search_text,
             limit=500,
         )
+        self._last_alert_query_params = query_params
+        self._alerts_loaded = True
+        self._alerts_dirty = False
+        self._alert_session_context_cache = {}
         self.render_alert_rows()
 
     def _verdict_badge_object(self, verdict: str) -> str:
@@ -1949,6 +1995,26 @@ class MainWindow(QMainWindow):
         label.setText(verdict or "UNKNOWN")
         label.setObjectName(self._verdict_badge_object(verdict))
         self._refresh_widget_style(label)
+
+    def _verdict_item_colors(self, verdict: str) -> tuple[QColor, QColor]:
+        text = (verdict or "").upper()
+        if text in {"INFO", "LOW", "NORMAL", "ANOMALY"}:
+            return QColor("#dbeafe"), QColor("#1d4ed8")
+        if text in {"WARNING", "WARN", "MEDIUM"}:
+            return QColor("#fef3c7"), QColor("#b45309")
+        if text in {"SUSPICIOUS"}:
+            return QColor("#ffedd5"), QColor("#c2410c")
+        if text in {"CRITICAL", "HIGH", "MALICIOUS", "INCIDENT"}:
+            return QColor("#fee2e2"), QColor("#b91c1c")
+        return QColor("#f1f5f9"), QColor("#475569")
+
+    def _style_alert_verdict_item(self, item: QTableWidgetItem, verdict: str) -> None:
+        background, foreground = self._verdict_item_colors(verdict)
+        item.setBackground(QBrush(background))
+        item.setForeground(QBrush(foreground))
+        font = item.font()
+        font.setBold(True)
+        item.setFont(font)
 
     def _extract_alert_endpoints(self, description: str) -> tuple[str, str]:
         text = description or ""
@@ -1978,55 +2044,64 @@ class MainWindow(QMainWindow):
             self.alert_summary_source.setText("Source: -")
             self.alert_summary_destination.setText("Destination: -")
             self.alert_summary_description.setText("-")
-            self.linked_session_label.setText("Нет связанной оценки сессии")
+            self.linked_session_label.setText(self._linked_alert_session_context(None))
         if hasattr(self, "alert_details"):
             self.alert_details.clear()
 
     def render_alert_rows(self):
-        self.alerts_table.setRowCount(0)
-        self.alerts_count_label.setText(f"Alerts: {len(self.alert_rows)}")
-        self._clear_alert_details_panel()
-        if hasattr(self, "alerts_empty_label"):
-            self.alerts_empty_label.setVisible(not bool(self.alert_rows))
-            self.alerts_table.setVisible(bool(self.alert_rows))
+        table = self.alerts_table
+        updates_enabled = table.updatesEnabled()
+        signals_blocked = table.blockSignals(True)
+        table.setUpdatesEnabled(False)
+        try:
+            table.clearSelection()
+            table.setRowCount(0)
+            self.alerts_count_label.setText(f"Alerts: {len(self.alert_rows)}")
+            self._clear_alert_details_panel()
+            if hasattr(self, "alerts_empty_label"):
+                self.alerts_empty_label.setVisible(not bool(self.alert_rows))
+                table.setVisible(bool(self.alert_rows))
 
-        for row_idx, row in enumerate(self.alert_rows):
-            alert_id, timestamp, session_id, alert_type, description = row
-            verdict = self._extract_alert_verdict(alert_type or "", description or "")
-            display_verdict = verdict if verdict != "-" else "UNKNOWN"
-            src, dst = self._extract_alert_endpoints(description or "")
-            source_text = src if src != "-" else self._extract_alert_ips(description or "")
-            if dst != "-":
-                source_text = f"{source_text} -> {dst}" if source_text != "-" else dst
-            self.alerts_table.insertRow(row_idx)
-            self.alerts_table.setRowHeight(row_idx, 62)
-            values = [
-                timestamp or "-",
-                alert_type or "-",
-                display_verdict,
-                source_text,
-            ]
-            for col, value in enumerate(values):
-                item = QTableWidgetItem(value)
-                item.setData(Qt.ItemDataRole.UserRole, row_idx)
-                item.setToolTip(value)
-                if col == 2:
-                    item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-                else:
-                    item.setTextAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
-                self.alerts_table.setItem(row_idx, col, item)
-            verdict_badge = QLabel(display_verdict)
-            verdict_badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            verdict_badge.setToolTip(display_verdict)
-            self._set_verdict_badge(verdict_badge, display_verdict)
-            self.alerts_table.setCellWidget(row_idx, 2, verdict_badge)
+            table.setRowCount(len(self.alert_rows))
+            for row_idx, row in enumerate(self.alert_rows):
+                _alert_id, timestamp, _session_id, alert_type, description = row
+                verdict = self._extract_alert_verdict(alert_type or "", description or "")
+                display_verdict = verdict if verdict != "-" else "UNKNOWN"
+                src, dst = self._extract_alert_endpoints(description or "")
+                source_text = src if src != "-" else self._extract_alert_ips(description or "")
+                if dst != "-":
+                    source_text = f"{source_text} -> {dst}" if source_text != "-" else dst
 
-        self.alerts_table.resizeColumnsToContents()
-        self.alerts_table.setColumnWidth(0, max(self.alerts_table.columnWidth(0), 170))
-        self.alerts_table.setColumnWidth(1, max(self.alerts_table.columnWidth(1), 150))
-        self.alerts_table.setColumnWidth(2, max(self.alerts_table.columnWidth(2), 128))
+                table.setRowHeight(row_idx, 62)
+                values = [
+                    timestamp or "-",
+                    alert_type or "-",
+                    display_verdict,
+                    source_text,
+                ]
+                for col, value in enumerate(values):
+                    item = QTableWidgetItem(value)
+                    item.setData(Qt.ItemDataRole.UserRole, row_idx)
+                    item.setToolTip(value)
+                    if col == 2:
+                        item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                        self._style_alert_verdict_item(item, display_verdict)
+                    else:
+                        item.setTextAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+                    table.setItem(row_idx, col, item)
+            self._configure_alerts_table_columns()
+        finally:
+            table.blockSignals(signals_blocked)
+            table.setUpdatesEnabled(updates_enabled)
+            table.viewport().update()
+
         if self.alert_rows:
-            self.alerts_table.setCurrentCell(0, 0)
+            signals_blocked = table.blockSignals(True)
+            try:
+                table.setCurrentCell(0, 0)
+            finally:
+                table.blockSignals(signals_blocked)
+            self.show_selected_alert_details()
 
     def _extract_alert_verdict(self, alert_type: str, description: str) -> str:
         text = description or ""
@@ -2048,27 +2123,18 @@ class MainWindow(QMainWindow):
         ips = re.findall(r"\b(?:\d{1,3}\.){3}\d{1,3}\b", description or "")
         return ", ".join(dict.fromkeys(ips)) if ips else "-"
 
-    def show_selected_alert_details(self):
-        selected = self.alerts_table.selectedItems()
-        if not selected:
-            self._clear_alert_details_panel()
-            return
+    def _linked_alert_session_context(self, session_id) -> str:
+        empty_text = "Нет связанной оценки сессии"
+        if session_id is None:
+            return empty_text
 
-        row_idx = selected[0].data(Qt.ItemDataRole.UserRole)
-        if row_idx is None or row_idx >= len(self.alert_rows):
-            self._clear_alert_details_panel()
-            return
+        cache = getattr(self, "_alert_session_context_cache", {})
+        if session_id in cache:
+            return cache[session_id]
 
-        alert_id, timestamp, session_id, alert_type, description = self.alert_rows[row_idx]
-        verdict = self._extract_alert_verdict(alert_type or "", description or "")
-        display_verdict = verdict if verdict != "-" else "UNKNOWN"
-        ips = self._extract_alert_ips(description or "")
-        src, dst = self._extract_alert_endpoints(description or "")
-        session_context = "Нет связанной оценки сессии"
-        if session_id is not None:
-            session_data = get_session_record(session_id)
-            if session_data:
-                session_context = f"""
+        session_data = get_session_record(session_id)
+        if session_data:
+            session_context = f"""
 Session ID: {session_id}
 IB Score: {session_data.get('final_ib_score') if session_data.get('final_ib_score') is not None else '-'}
 IB Level: {session_data.get('final_ib_level') or '-'}
@@ -2077,6 +2143,32 @@ Incident Probability: {session_data.get('incident_probability') or '-'}
 Confidence: {session_data.get('confidence') or '-'}
 Summary: {session_data.get('summary_text') or '-'}
 """.strip()
+        else:
+            session_context = empty_text
+
+        cache[session_id] = session_context
+        self._alert_session_context_cache = cache
+        return session_context
+
+    def show_selected_alert_details(self):
+        row_idx = self.alerts_table.currentRow()
+        if row_idx < 0:
+            self._clear_alert_details_panel()
+            return
+
+        row_item = self.alerts_table.item(row_idx, 0)
+        if row_item is not None:
+            row_idx = row_item.data(Qt.ItemDataRole.UserRole)
+        if row_idx is None or row_idx < 0 or row_idx >= len(self.alert_rows):
+            self._clear_alert_details_panel()
+            return
+
+        alert_id, timestamp, session_id, alert_type, description = self.alert_rows[row_idx]
+        verdict = self._extract_alert_verdict(alert_type or "", description or "")
+        display_verdict = verdict if verdict != "-" else "UNKNOWN"
+        ips = self._extract_alert_ips(description or "")
+        src, dst = self._extract_alert_endpoints(description or "")
+        session_context = self._linked_alert_session_context(session_id)
         if hasattr(self, "alert_summary_title"):
             self.alert_summary_title.setText(f"Alert Details: ALR-{int(alert_id):03d}" if str(alert_id).isdigit() else f"Alert Details: {alert_id}")
             self._set_verdict_badge(self.alert_summary_verdict, display_verdict)
@@ -2566,8 +2658,7 @@ Report path:
         if index == 2:
             self.refresh_settings_profile_page()
         if index == 4 and hasattr(self, "alerts_table"):
-            self.populate_alert_filters()
-            self.load_alerts_history()
+            self.ensure_alerts_loaded()
         nav_buttons = [
             self.main_nav_btn,
             self.pcap_nav_btn,
