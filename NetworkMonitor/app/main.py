@@ -898,7 +898,7 @@ class MainWindow(QMainWindow):
         self.settings_rule_lbl.setObjectName("settings_segmented")
         self.ml_status_lbl = self._settings_slider_label("Чувствительность ML")
         self.settings_anom_lbl = self._settings_slider_label("Порог аномалий")
-        detection_layout.addWidget(self._settings_value_row("Движок правил", self.settings_rule_lbl))
+        detection_layout.addWidget(self._settings_value_row("Rule Engine", self.settings_rule_lbl))
         detection_layout.addWidget(self._settings_value_row("Чувствительность ML", self.ml_status_lbl))
         detection_layout.addWidget(self._settings_value_row("Порог аномалий", self.settings_anom_lbl))
         center_layout.addWidget(detection_card)
@@ -2242,7 +2242,7 @@ IPs: {ips}
     def _session_list_text(self, row: tuple) -> str:
         session_id, started, duration, profile, iface, score = row
         score_text = score if score is not None else "-"
-        return f"sess-{int(session_id):03d}     {self._format_session_date(started)}\nDuration: {self._format_session_duration(duration)} | IB Score: {score_text}"
+        return f"sess-{int(session_id):03d}     {self._format_session_date(started)}\nДлительность: {self._format_session_duration(duration)} | IB Score: {score_text}"
 
     def apply_session_filter(self) -> None:
         self.render_sessions_list()
@@ -2400,7 +2400,7 @@ IOC совпадения: {s.get('total_ioc_matches') or 0}
             self,
             "Сохранить HTML-отчёт по сессии",
             f"network_session_{session_id}_report.html",
-            "HTML Files (*.html)",
+            "HTML report (*.html)",
         )
         if not file_path:
             return
@@ -2438,13 +2438,19 @@ IOC совпадения: {s.get('total_ioc_matches') or 0}
         ml = data.get("ml") or {}
 
         self.settings_profiles_list.clear()
-        display_profiles = ["Default", "High-Sensitivity", "Low-Latency", "Custom 1", "Custom 2"]
+        display_profiles = [
+            ("По умолчанию", "Default"),
+            ("Высокая чувствительность", "High-Sensitivity"),
+            ("Низкая задержка", "Low-Latency"),
+            ("Пользовательский 1", "Custom 1"),
+            ("Пользовательский 2", "Custom 2"),
+        ]
         active_name = active_profile.name or "Default"
         active_row = 0
-        for idx, name in enumerate(display_profiles):
-            item = QListWidgetItem(name)
+        for idx, (display_name, profile_name) in enumerate(display_profiles):
+            item = QListWidgetItem(display_name)
             item.setData(Qt.ItemDataRole.UserRole, active_filename if idx == 0 else None)
-            if name.lower() == active_name.lower() or (idx == 0 and active_filename == "default.json"):
+            if profile_name.lower() == active_name.lower() or (idx == 0 and active_filename == "default.json"):
                 active_row = idx
             self.settings_profiles_list.addItem(item)
         if self.settings_profiles_list.count():
@@ -2565,7 +2571,7 @@ IOC совпадения: {s.get('total_ioc_matches') or 0}
 
         file_path, _ = QFileDialog.getOpenFileName(
             self,
-            "Выберите PCAP файл",
+            "Выберите PCAP-файл",
             "",
             "PCAP Files (*.pcap *.pcapng);;All Files (*)",
         )
@@ -2672,7 +2678,7 @@ IOC совпадения: {s.get('total_ioc_matches') or 0}
             self,
             "Сохранить отчёт",
             "network_report.html",
-            "HTML Files (*.html)",
+            "HTML report (*.html)",
         )
         if not file_path:
             return
