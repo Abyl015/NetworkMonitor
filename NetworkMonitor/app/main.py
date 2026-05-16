@@ -82,6 +82,10 @@ class MainWindow(QMainWindow):
         self.max_log_messages = 500
         self._live_ui_dirty = False
         self._last_live_ui_flush = 0.0
+        self._pending_worker_logs: list[str] = []
+        self._last_stats_refresh = 0.0
+        self._last_graph_refresh = 0.0
+        self._force_graph_refresh = False
 
         init_db()
         self._build_ui()
@@ -586,8 +590,8 @@ class MainWindow(QMainWindow):
         page = QWidget()
         scroll.setWidget(page)
         layout = QVBoxLayout(page)
-        layout.setContentsMargins(18, 18, 18, 18)
-        layout.setSpacing(12)
+        layout.setContentsMargins(18, 18, 18, 16)
+        layout.setSpacing(10)
 
         header = QHBoxLayout()
         header.setContentsMargins(0, 0, 0, 0)
@@ -621,16 +625,16 @@ class MainWindow(QMainWindow):
         summary_card = QFrame()
         summary_card.setObjectName("pcap_detail_card")
         summary_layout = QVBoxLayout(summary_card)
-        summary_layout.setContentsMargins(14, 12, 14, 12)
-        summary_layout.setSpacing(10)
+        summary_layout.setContentsMargins(14, 11, 14, 12)
+        summary_layout.setSpacing(8)
         summary_title = QLabel("Сводка PCAP-файла")
         summary_title.setObjectName("pcap_card_title")
         summary_layout.addWidget(summary_title)
 
         summary_grid = QGridLayout()
         summary_grid.setContentsMargins(0, 0, 0, 0)
-        summary_grid.setHorizontalSpacing(20)
-        summary_grid.setVerticalSpacing(4)
+        summary_grid.setHorizontalSpacing(24)
+        summary_grid.setVerticalSpacing(3)
         self.pcap_file_name_label = QLabel("-")
         self.pcap_file_size_label = QLabel("-")
         self.pcap_packet_count_label = QLabel("0")
@@ -646,6 +650,7 @@ class MainWindow(QMainWindow):
             label.setObjectName("pcap_field_label")
             value_label.setObjectName("pcap_field_value")
             value_label.setWordWrap(True)
+            value_label.setMinimumHeight(20)
             summary_grid.addWidget(label, 0, col)
             summary_grid.addWidget(value_label, 1, col)
             summary_grid.setColumnStretch(col, 1)
@@ -655,15 +660,15 @@ class MainWindow(QMainWindow):
         assessment_card = QFrame()
         assessment_card.setObjectName("pcap_detail_card")
         assessment_layout = QVBoxLayout(assessment_card)
-        assessment_layout.setContentsMargins(14, 12, 14, 12)
-        assessment_layout.setSpacing(10)
+        assessment_layout.setContentsMargins(14, 10, 14, 10)
+        assessment_layout.setSpacing(8)
         assessment_title = QLabel("Оценка безопасности")
         assessment_title.setObjectName("pcap_card_title")
         assessment_layout.addWidget(assessment_title)
 
         assessment_body = QHBoxLayout()
         assessment_body.setContentsMargins(0, 0, 0, 0)
-        assessment_body.setSpacing(14)
+        assessment_body.setSpacing(12)
         self.pcap_score_label = QLabel("-")
         self.pcap_score_label.setObjectName("pcap_score_badge")
         self.pcap_score_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -671,7 +676,7 @@ class MainWindow(QMainWindow):
 
         assessment_text = QVBoxLayout()
         assessment_text.setContentsMargins(0, 0, 0, 0)
-        assessment_text.setSpacing(4)
+        assessment_text.setSpacing(3)
         self.pcap_assessment_level_label = QLabel("Нет данных")
         self.pcap_assessment_level_label.setObjectName("pcap_assessment_level")
         self.pcap_assessment_summary_label = QLabel("Откройте PCAP-файл для анализа")
@@ -679,6 +684,7 @@ class MainWindow(QMainWindow):
         self.pcap_assessment_summary_label.setWordWrap(True)
         assessment_text.addWidget(self.pcap_assessment_level_label)
         assessment_text.addWidget(self.pcap_assessment_summary_label)
+        assessment_text.addStretch(1)
         assessment_body.addLayout(assessment_text, 1)
         assessment_layout.addLayout(assessment_body)
         layout.addWidget(assessment_card)
@@ -690,14 +696,16 @@ class MainWindow(QMainWindow):
 
         protocol_card = QFrame()
         protocol_card.setObjectName("pcap_detail_card")
+        protocol_card.setMinimumHeight(126)
         protocol_layout = QVBoxLayout(protocol_card)
-        protocol_layout.setContentsMargins(14, 12, 14, 12)
-        protocol_layout.setSpacing(8)
+        protocol_layout.setContentsMargins(14, 11, 14, 12)
+        protocol_layout.setSpacing(7)
         protocol_title = QLabel("Распределение протоколов")
         protocol_title.setObjectName("pcap_card_title")
         protocol_layout.addWidget(protocol_title)
         self.pcap_protocol_list = QListWidget()
         self.pcap_protocol_list.setObjectName("pcap_compact_list")
+        self.pcap_protocol_list.setMinimumHeight(74)
         protocol_empty = QListWidgetItem("Откройте PCAP-файл для анализа")
         protocol_empty.setData(Qt.ItemDataRole.UserRole, "empty")
         self.pcap_protocol_list.addItem(protocol_empty)
@@ -706,14 +714,16 @@ class MainWindow(QMainWindow):
 
         top_ips_card = QFrame()
         top_ips_card.setObjectName("pcap_detail_card")
+        top_ips_card.setMinimumHeight(126)
         top_ips_layout = QVBoxLayout(top_ips_card)
-        top_ips_layout.setContentsMargins(14, 12, 14, 12)
-        top_ips_layout.setSpacing(8)
+        top_ips_layout.setContentsMargins(14, 11, 14, 12)
+        top_ips_layout.setSpacing(7)
         top_ips_title = QLabel("Топ IP источников/назначений")
         top_ips_title.setObjectName("pcap_card_title")
         top_ips_layout.addWidget(top_ips_title)
         self.pcap_stats_list = QListWidget()
         self.pcap_stats_list.setObjectName("pcap_compact_list")
+        self.pcap_stats_list.setMinimumHeight(74)
         stats_empty = QListWidgetItem("Данные появятся после анализа")
         stats_empty.setData(Qt.ItemDataRole.UserRole, "empty")
         self.pcap_stats_list.addItem(stats_empty)
@@ -722,14 +732,16 @@ class MainWindow(QMainWindow):
 
         conversations_card = QFrame()
         conversations_card.setObjectName("pcap_detail_card")
+        conversations_card.setMinimumHeight(126)
         conversations_layout = QVBoxLayout(conversations_card)
-        conversations_layout.setContentsMargins(14, 12, 14, 12)
-        conversations_layout.setSpacing(8)
+        conversations_layout.setContentsMargins(14, 11, 14, 12)
+        conversations_layout.setSpacing(7)
         conversations_title = QLabel("Подозрительные соединения")
         conversations_title.setObjectName("pcap_card_title")
         conversations_layout.addWidget(conversations_title)
         self.pcap_conversations_list = QListWidget()
         self.pcap_conversations_list.setObjectName("pcap_compact_list")
+        self.pcap_conversations_list.setMinimumHeight(74)
         conversations_empty = QListWidgetItem("Данные появятся после анализа")
         conversations_empty.setData(Qt.ItemDataRole.UserRole, "empty")
         self.pcap_conversations_list.addItem(conversations_empty)
@@ -743,19 +755,31 @@ class MainWindow(QMainWindow):
         alerts_card = QFrame()
         alerts_card.setObjectName("pcap_detail_card")
         alerts_layout = QVBoxLayout(alerts_card)
-        alerts_layout.setContentsMargins(14, 12, 14, 12)
+        alerts_layout.setContentsMargins(14, 11, 14, 12)
         alerts_layout.setSpacing(8)
         alerts_title = QLabel("Детальные алерты")
         alerts_title.setObjectName("pcap_card_title")
         alerts_layout.addWidget(alerts_title)
+        self.pcap_alerts_empty_label = QLabel("Нет данных")
+        self.pcap_alerts_empty_label.setObjectName("pcap_empty_label")
+        self.pcap_alerts_empty_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        alerts_layout.addWidget(self.pcap_alerts_empty_label)
         self.pcap_alerts_table = QTableWidget(0, 4)
         self.pcap_alerts_table.setObjectName("pcap_alerts_table")
         self.pcap_alerts_table.setHorizontalHeaderLabels(["Время", "Тип", "Вердикт", "Описание"])
         self.pcap_alerts_table.verticalHeader().setVisible(False)
+        self.pcap_alerts_table.verticalHeader().setDefaultSectionSize(28)
         self.pcap_alerts_table.horizontalHeader().setStretchLastSection(True)
         self.pcap_alerts_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.pcap_alerts_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
-        self.pcap_alerts_table.setMinimumHeight(132)
+        self.pcap_alerts_table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        self.pcap_alerts_table.setAlternatingRowColors(True)
+        self.pcap_alerts_table.setShowGrid(False)
+        self.pcap_alerts_table.setWordWrap(True)
+        self.pcap_alerts_table.setMinimumHeight(150)
+        self.pcap_alerts_table.setColumnWidth(0, 170)
+        self.pcap_alerts_table.setColumnWidth(1, 128)
+        self.pcap_alerts_table.setColumnWidth(2, 112)
         alerts_layout.addWidget(self.pcap_alerts_table)
         layout.addWidget(alerts_card)
 
@@ -767,7 +791,7 @@ class MainWindow(QMainWindow):
         log_card = QFrame()
         log_card.setObjectName("pcap_detail_card")
         log_layout = QVBoxLayout(log_card)
-        log_layout.setContentsMargins(14, 12, 14, 12)
+        log_layout.setContentsMargins(14, 11, 14, 12)
         log_layout.setSpacing(8)
         log_title = QLabel("Лог анализа")
         log_title.setObjectName("pcap_card_title")
@@ -776,20 +800,20 @@ class MainWindow(QMainWindow):
         self.pcap_log_area.setObjectName("pcap_log_panel")
         self.pcap_log_area.setReadOnly(True)
         self.pcap_log_area.document().setMaximumBlockCount(self.max_log_messages)
-        self.pcap_log_area.setMinimumHeight(190)
+        self.pcap_log_area.setMinimumHeight(168)
         log_layout.addWidget(self.pcap_log_area)
         bottom_grid.addWidget(log_card, 0, 0)
 
         timeline_card = QFrame()
         timeline_card.setObjectName("pcap_detail_card")
         timeline_layout = QVBoxLayout(timeline_card)
-        timeline_layout.setContentsMargins(14, 12, 14, 12)
+        timeline_layout.setContentsMargins(14, 11, 14, 12)
         timeline_layout.setSpacing(8)
         timeline_title = QLabel("Хронология трафика")
         timeline_title.setObjectName("pcap_card_title")
         timeline_layout.addWidget(timeline_title)
         self.pcap_plot = PlotWidget("Пакеты/сек")
-        self.pcap_plot.setMinimumHeight(180)
+        self.pcap_plot.setMinimumHeight(168)
         timeline_layout.addWidget(self.pcap_plot)
         bottom_grid.addWidget(timeline_card, 0, 1)
         bottom_grid.setColumnStretch(0, 1)
@@ -1666,11 +1690,8 @@ class MainWindow(QMainWindow):
             f"{summary}\nУгроза: {threat} | Инцидент: {incident} | Достоверность: {confidence}"
         )
 
-    def _append_pcap_alert_from_log(self, msg: str) -> None:
-        if not hasattr(self, "pcap_alerts_table"):
-            return
-
-        plain = self._plain_log(msg)
+    def _pcap_alert_from_log(self, msg: str, plain: str | None = None) -> tuple[str, str, str] | None:
+        plain = plain if plain is not None else self._plain_log(msg)
         verdict = re.search(r"\[VERDICT\]\s+(\w+)\s+\|\s+([^|]+)\|\s*(.+)$", plain)
         incident = re.search(r"\[INCIDENT\]\s+(\w+)\s+\|\s+host=([^|]+)\|\s*(.+)$", plain)
         ioc = re.search(r"\[IOC(?: DOMAIN)? MATCH\]\s+(.+)$", plain)
@@ -1688,27 +1709,59 @@ class MainWindow(QMainWindow):
             alert_type = "IOC"
             description = ioc.group(1).strip()
         else:
+            return None
+
+        return alert_type, severity.upper(), description
+
+    def _append_pcap_alert_rows(self, rows: list[tuple[str, str, str]]) -> None:
+        if not rows or not hasattr(self, "pcap_alerts_table"):
             return
 
-        row = self.pcap_alerts_table.rowCount()
-        self.pcap_alerts_table.insertRow(row)
-        values = [datetime.now().strftime("%Y-%m-%d %H:%M:%S"), alert_type, severity.upper(), description]
-        for col, value in enumerate(values):
-            self.pcap_alerts_table.setItem(row, col, QTableWidgetItem(value))
-        self.pcap_alerts_table.resizeColumnsToContents()
+        table = self.pcap_alerts_table
+        updates_enabled = table.updatesEnabled()
+        table.setUpdatesEnabled(False)
+        try:
+            start_row = table.rowCount()
+            table.setRowCount(start_row + len(rows))
+            timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            for offset, (alert_type, severity, description) in enumerate(rows):
+                row = start_row + offset
+                values = [timestamp, alert_type, severity, description]
+                for col, value in enumerate(values):
+                    table.setItem(row, col, QTableWidgetItem(value))
+        finally:
+            table.setUpdatesEnabled(updates_enabled)
+            table.viewport().update()
+
+        if hasattr(self, "pcap_alerts_empty_label"):
+            self.pcap_alerts_empty_label.setVisible(False)
 
         if hasattr(self, "pcap_conversations_list"):
-            if self.pcap_conversations_list.count() == 1 and self.pcap_conversations_list.item(0).data(Qt.ItemDataRole.UserRole) == "empty":
-                self.pcap_conversations_list.clear()
-            self.pcap_conversations_list.insertItem(0, description)
-            while self.pcap_conversations_list.count() > 20:
-                self.pcap_conversations_list.takeItem(self.pcap_conversations_list.count() - 1)
+            conv = self.pcap_conversations_list
+            updates_enabled = conv.updatesEnabled()
+            conv.setUpdatesEnabled(False)
+            try:
+                if conv.count() == 1 and conv.item(0).data(Qt.ItemDataRole.UserRole) == "empty":
+                    conv.clear()
+                for _alert_type, _severity, description in rows:
+                    conv.insertItem(0, description)
+                while conv.count() > 20:
+                    conv.takeItem(conv.count() - 1)
+            finally:
+                conv.setUpdatesEnabled(updates_enabled)
+
+    def _append_pcap_alert_from_log(self, msg: str) -> None:
+        parsed = self._pcap_alert_from_log(msg)
+        if parsed:
+            self._append_pcap_alert_rows([parsed])
 
     def clear_pcap_view(self) -> None:
         if hasattr(self, "pcap_log_area"):
             self.pcap_log_area.clear()
         if hasattr(self, "pcap_alerts_table"):
             self.pcap_alerts_table.setRowCount(0)
+        if hasattr(self, "pcap_alerts_empty_label"):
+            self.pcap_alerts_empty_label.setVisible(True)
         if hasattr(self, "pcap_protocol_list"):
             self.pcap_protocol_list.clear()
             item = QListWidgetItem("Откройте PCAP-файл для анализа")
@@ -1776,14 +1829,20 @@ class MainWindow(QMainWindow):
         self._update_pcap_file_summary()
         self.update_top_ips()
 
-    def flush_live_ui_updates(self) -> None:
-        if not self._live_ui_dirty:
+    def flush_live_ui_updates(self, force: bool = False) -> None:
+        if not force and not self._live_ui_dirty and not self._pending_worker_logs:
             return
 
+        self._flush_pending_worker_logs()
         self._live_ui_dirty = False
-        self._last_live_ui_flush = time.monotonic()
-        self.update_assessment_panel()
-        self.update_stats_display()
+        now = time.monotonic()
+        self._last_live_ui_flush = now
+
+        stats_interval = 1.0 if getattr(self, "current_mode", "") == "pcap" else 0.5
+        if force or now - getattr(self, "_last_stats_refresh", 0.0) >= stats_interval:
+            self._last_stats_refresh = now
+            self.update_assessment_panel()
+            self.update_stats_display()
 
     def set_status_text(self, text: str) -> None:
         status_text = text if text.startswith("Статус:") else f"Статус: {text}"
@@ -1855,21 +1914,86 @@ class MainWindow(QMainWindow):
         self.assessment_compare_label.setText(self._comparison_text(current, previous))
 
     def refresh_graphs(self):
+        now = time.monotonic()
+        force = getattr(self, "_force_graph_refresh", False)
+        if getattr(self, "is_monitoring", False) and getattr(self, "current_mode", "") == "pcap" and not force:
+            if now - getattr(self, "_last_graph_refresh", 0.0) < 2.0:
+                return
+        self._last_graph_refresh = now
+        self._force_graph_refresh = False
+
         pps_eff = float(getattr(self.engine.rules, "last_pps_eff", 0.0))
         seen = max(1, int(getattr(self.engine, "total_seen", 0)))
         anom = int(getattr(self.engine, "total_anom", 0))
         anom_rate = anom / seen
-        self.plot.push(pps_eff=pps_eff, anom_rate=anom_rate)
-        if hasattr(self, "pcap_plot"):
+
+        current_index = self.pages.currentIndex() if hasattr(self, "pages") else 0
+        if force or current_index == 0 or getattr(self, "current_mode", "") != "pcap":
+            self.plot.push(pps_eff=pps_eff, anom_rate=anom_rate)
+        if hasattr(self, "pcap_plot") and (force or current_index == 1):
             self.pcap_plot.push(pps_eff=pps_eff, anom_rate=anom_rate)
 
-    def append_log(self, msg: str) -> None:
+    def _remember_log_message(self, msg: str) -> None:
         self.log_buffer.append(msg)
         if len(self.log_buffer) > self.max_log_messages:
             del self.log_buffer[: len(self.log_buffer) - self.max_log_messages]
 
         if getattr(self, "is_monitoring", False):
             self._mark_alerts_dirty()
+
+    def _append_log_batch_to_widget(self, widget: QTextEdit, messages: list[str]) -> None:
+        if not messages:
+            return
+
+        updates_enabled = widget.updatesEnabled()
+        widget.setUpdatesEnabled(False)
+        try:
+            for msg in messages:
+                widget.append(msg)
+        finally:
+            widget.setUpdatesEnabled(updates_enabled)
+            widget.verticalScrollBar().setValue(widget.verticalScrollBar().maximum())
+
+    def _queue_worker_log(self, msg: str) -> None:
+        self._remember_log_message(msg)
+        self._pending_worker_logs.append(msg)
+        self._live_ui_dirty = True
+
+    def _flush_pending_worker_logs(self) -> None:
+        if not self._pending_worker_logs:
+            return
+
+        messages = self._pending_worker_logs
+        self._pending_worker_logs = []
+
+        if hasattr(self, "pcap_log_area"):
+            self._append_log_batch_to_widget(self.pcap_log_area, messages)
+
+        parsed_pcap_rows: list[tuple[str, str, str]] = []
+        if hasattr(self, "events_list"):
+            updates_enabled = self.events_list.updatesEnabled()
+            self.events_list.setUpdatesEnabled(False)
+        else:
+            updates_enabled = True
+        try:
+            for msg in messages:
+                plain = self._plain_log(msg)
+                parsed = self._pcap_alert_from_log(msg, plain)
+                if parsed:
+                    parsed_pcap_rows.append(parsed)
+                self._append_to_events_if_needed(msg, plain)
+        finally:
+            if hasattr(self, "events_list"):
+                self.events_list.setUpdatesEnabled(updates_enabled)
+
+        self._append_pcap_alert_rows(parsed_pcap_rows)
+
+        if hasattr(self, "log_area"):
+            visible_messages = [msg for msg in messages if self._is_log_message_visible(msg)]
+            self._append_log_batch_to_widget(self.log_area, visible_messages)
+
+    def append_log(self, msg: str) -> None:
+        self._remember_log_message(msg)
 
         if hasattr(self, "pcap_log_area"):
             self.pcap_log_area.append(msg)
@@ -1903,13 +2027,13 @@ class MainWindow(QMainWindow):
             self.log_area.verticalScrollBar().maximum()
         )
 
-    def _append_to_events_if_needed(self, msg: str):
+    def _append_to_events_if_needed(self, msg: str, plain: str | None = None):
         if not hasattr(self, "events_list"):
             return
 
         important_tags = ["[VERDICT]", "[INCIDENT]", "[IOC]", "[IOC MATCH]", "[IOC DOMAIN MATCH]", "[SYSTEM]"]
         if any(tag in msg for tag in important_tags):
-            plain = self._plain_log(msg)
+            plain = plain if plain is not None else self._plain_log(msg)
             self.events_list.insertItem(0, plain)
 
             while self.events_list.count() > 100:
@@ -2538,12 +2662,15 @@ IOC совпадения: {s.get('total_ioc_matches') or 0}
         self.worker.start()
 
     def on_worker_message(self, msg: str) -> None:
-        self.append_log(msg)
-        self._live_ui_dirty = True
+        self._queue_worker_log(msg)
         if time.monotonic() - self._last_live_ui_flush >= 0.5:
             self.flush_live_ui_updates()
 
     def on_worker_finished(self) -> None:
+        self._force_graph_refresh = True
+        self.flush_live_ui_updates(force=True)
+        self.refresh_graphs()
+
         self.is_monitoring = False
         self.current_mode = "idle"
 

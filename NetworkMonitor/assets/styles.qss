@@ -151,8 +151,8 @@ QFrame#session_detail_card {
 
 QFrame#pcap_detail_card {
     background-color: #ffffff;
-    border: 1px solid #d7dfe8;
-    border-radius: 8px;
+    border: 1px solid #d9e1ec;
+    border-radius: 10px;
 }
 
 QFrame#settings_card {
@@ -267,7 +267,7 @@ QLabel#sessions_page_subtitle {
 
 QLabel#pcap_page_title {
     color: #020617;
-    font-size: 22px;
+    font-size: 24px;
     font-weight: 800;
     padding: 0;
 }
@@ -525,29 +525,50 @@ QLabel#pcap_field_label {
 
 QLabel#pcap_field_value,
 QLabel#pcap_body_text,
-QLabel#pcap_state_label {
+QLabel#pcap_state_label,
+QLabel#pcap_empty_label {
     color: #111827;
-    font-size: 12px;
+    font-size: 13px;
     padding: 0;
 }
 
+QLabel#pcap_body_text {
+    color: #334155;
+}
+
+QLabel#pcap_state_label {
+    color: #64748b;
+    background-color: #ffffff;
+    border: 1px solid #dbe3ef;
+    border-radius: 8px;
+    padding: 8px 10px;
+}
+
+QLabel#pcap_empty_label {
+    color: #64748b;
+    background-color: #f8fafc;
+    border: 1px solid #e5e7eb;
+    border-radius: 7px;
+    padding: 8px 10px;
+}
+
 QLabel#pcap_assessment_level {
-    color: #6b4f12;
-    font-size: 21px;
+    color: #7c5b0b;
+    font-size: 20px;
     font-weight: 800;
     padding: 0;
 }
 
 QLabel#pcap_score_badge {
     background-color: #fff7df;
-    color: #d6a510;
-    border: 7px solid #eab308;
-    border-radius: 34px;
-    min-width: 58px;
-    max-width: 58px;
-    min-height: 58px;
-    max-height: 58px;
-    font-size: 24px;
+    color: #b77905;
+    border: 6px solid #eab308;
+    border-radius: 31px;
+    min-width: 56px;
+    max-width: 56px;
+    min-height: 56px;
+    max-height: 56px;
+    font-size: 23px;
     font-weight: 800;
 }
 
@@ -790,13 +811,14 @@ QPushButton#sessions_filter_btn {
 }
 
 QPushButton#pcap_action_btn {
-    min-height: 34px;
-    border-radius: 7px;
+    min-height: 36px;
+    max-height: 38px;
+    border-radius: 8px;
     border: 1px solid #cfd8e3;
     background-color: #ffffff;
     color: #1f2937;
-    font-weight: 600;
-    padding: 0 12px;
+    font-weight: 700;
+    padding: 0 14px;
 }
 
 QPushButton#pcap_action_btn:hover {
@@ -889,31 +911,43 @@ QLabel#settings_profile_item_active {
 }
 
 QListWidget#pcap_compact_list {
-    border: none;
-    background-color: transparent;
-    padding: 0;
+    border: 1px solid #edf1f6;
+    border-radius: 7px;
+    background-color: #fbfdff;
+    padding: 4px;
 }
 
 QListWidget#pcap_compact_list::item {
-    padding: 5px 2px;
+    padding: 6px 7px;
     border: none;
     color: #111827;
     font-size: 13px;
 }
 
+QListWidget#pcap_compact_list::item:selected {
+    background-color: #dbeafe;
+    color: #0f172a;
+}
+
 QTableWidget#pcap_alerts_table {
     background-color: #ffffff;
-    border: 1px solid #d7dfe8;
-    border-radius: 6px;
-    gridline-color: #e5e7eb;
+    border: 1px solid #dbe3ef;
+    border-radius: 8px;
+    gridline-color: transparent;
     selection-background-color: #dbeafe;
     selection-color: #020617;
     alternate-background-color: #f8fafc;
-    font-size: 12px;
+    font-size: 13px;
 }
 
 QTableWidget#pcap_alerts_table::item {
-    padding: 7px 8px;
+    padding: 7px 9px;
+    border-bottom: 1px solid #eef2f7;
+}
+
+QTableWidget#pcap_alerts_table::item:selected {
+    background-color: #dbeafe;
+    color: #020617;
 }
 
 QTableWidget#alerts_table {
@@ -951,10 +985,10 @@ QTextEdit#pcap_log_panel {
     background-color: #0f172a;
     color: #d1d5db;
     border: 1px solid #1e293b;
-    border-radius: 6px;
+    border-radius: 8px;
     font-family: "Consolas", "Courier New", monospace;
     font-size: 12px;
-    padding: 8px;
+    padding: 9px;
 }
 
 QListWidget::item:selected {
