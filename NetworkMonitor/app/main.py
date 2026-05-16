@@ -12,7 +12,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 from PyQt6.QtCore import QDateTime, QSize, Qt, QTimer
-from PyQt6.QtGui import QBrush, QColor
+from PyQt6.QtGui import QBrush, QColor, QIcon
 from PyQt6.QtWidgets import (
     QApplication,
     QAbstractItemView,
@@ -109,6 +109,8 @@ class MainWindow(QMainWindow):
         self.sidebar_expanded_width = 220
         self.sidebar_collapsed_width = 64
         self.sidebar_collapsed = False
+        self.nav_icon_size = QSize(20, 20)
+        self.nav_icons_dir = Path(__file__).resolve().parents[1] / "assets" / "icons"
 
         sidebar = QFrame()
         sidebar.setObjectName("sidebar")
@@ -116,8 +118,8 @@ class MainWindow(QMainWindow):
         self.sidebar = sidebar
 
         nav_layout = QVBoxLayout(sidebar)
-        nav_layout.setContentsMargins(14, 14, 14, 14)
-        nav_layout.setSpacing(8)
+        nav_layout.setContentsMargins(14, 16, 14, 14)
+        nav_layout.setSpacing(9)
         self.nav_layout = nav_layout
 
         self.sidebar_toggle_btn = QPushButton("☰")
@@ -127,43 +129,60 @@ class MainWindow(QMainWindow):
         self.sidebar_toggle_btn.clicked.connect(self.toggle_sidebar)
         nav_layout.addWidget(self.sidebar_toggle_btn)
 
+        nav_brand_block = QFrame()
+        nav_brand_block.setObjectName("nav_brand_block")
+        brand_layout = QVBoxLayout(nav_brand_block)
+        brand_layout.setContentsMargins(12, 10, 12, 10)
+        brand_layout.setSpacing(2)
+        self.nav_brand_block = nav_brand_block
+
         nav_title = QLabel("AI Network Guardian")
         nav_title.setObjectName("nav_title")
         self.nav_title = nav_title
-        nav_layout.addWidget(nav_title)
+        brand_layout.addWidget(nav_title)
 
-        nav_subtitle = QLabel("v2.0")
+        nav_subtitle = QLabel("v2.0 Security Monitor")
         nav_subtitle.setObjectName("nav_subtitle")
         self.nav_subtitle = nav_subtitle
-        nav_layout.addWidget(nav_subtitle)
+        brand_layout.addWidget(nav_subtitle)
+
+        nav_layout.addWidget(nav_brand_block)
+        nav_layout.addSpacing(12)
 
         self.main_nav_btn = QPushButton("Мониторинг")
         self.main_nav_btn.setCheckable(True)
         self.main_nav_btn.clicked.connect(lambda: self.switch_page(0))
+        self._configure_nav_button(self.main_nav_btn, "dashboard.svg")
         nav_layout.addWidget(self.main_nav_btn)
 
         self.pcap_nav_btn = QPushButton("PCAP-анализ")
         self.pcap_nav_btn.setCheckable(True)
         self.pcap_nav_btn.clicked.connect(lambda: self.switch_page(1))
+        self._configure_nav_button(self.pcap_nav_btn, "pcap.svg")
         nav_layout.addWidget(self.pcap_nav_btn)
-
-        self.settings_nav_btn = QPushButton("Настройки")
-        self.settings_nav_btn.setCheckable(True)
-        self.settings_nav_btn.clicked.connect(lambda: self.switch_page(2))
-        nav_layout.addWidget(self.settings_nav_btn)
 
         self.sessions_nav_btn = QPushButton("Сессии")
         self.sessions_nav_btn.setCheckable(True)
         self.sessions_nav_btn.clicked.connect(lambda: self.switch_page(3))
+        self._configure_nav_button(self.sessions_nav_btn, "sessions.svg")
         nav_layout.addWidget(self.sessions_nav_btn)
 
         self.alerts_nav_btn = QPushButton("Алерты")
         self.alerts_nav_btn.setCheckable(True)
         self.alerts_nav_btn.clicked.connect(lambda: self.switch_page(4))
+        self._configure_nav_button(self.alerts_nav_btn, "alerts.svg")
         nav_layout.addWidget(self.alerts_nav_btn)
 
-        self._apply_sidebar_state(refresh_styles=False)
         nav_layout.addStretch(1)
+
+        self.settings_nav_btn = QPushButton("Настройки")
+        self.settings_nav_btn.setCheckable(True)
+        self.settings_nav_btn.clicked.connect(lambda: self.switch_page(2))
+        self._configure_nav_button(self.settings_nav_btn, "settings.svg")
+        self.settings_nav_btn.setProperty("secondary", True)
+        nav_layout.addWidget(self.settings_nav_btn)
+
+        self._apply_sidebar_state(refresh_styles=False)
 
         self.pages = QStackedWidget()
         self.pages.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
@@ -1391,6 +1410,15 @@ class MainWindow(QMainWindow):
         return page
 
     # ---------- helpers ----------
+    def _configure_nav_button(self, button: QPushButton, icon_name: str) -> None:
+        icon_path = self.nav_icons_dir / icon_name
+        button.setObjectName("nav_btn")
+        button.setIcon(QIcon(str(icon_path)))
+        button.setIconSize(self.nav_icon_size)
+        button.setMinimumHeight(38)
+        button.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        button.setCursor(Qt.CursorShape.PointingHandCursor)
+
     def _refresh_widget_style(self, widget: QWidget) -> None:
         widget.style().unpolish(widget)
         widget.style().polish(widget)
@@ -1400,9 +1428,9 @@ class MainWindow(QMainWindow):
         return [
             (self.main_nav_btn, "Мониторинг", "М", "Мониторинг"),
             (self.pcap_nav_btn, "PCAP-анализ", "P", "PCAP-анализ"),
-            (self.settings_nav_btn, "Настройки", "Н", "Настройки"),
             (self.sessions_nav_btn, "Сессии", "С", "Сессии"),
             (self.alerts_nav_btn, "Алерты", "А", "Алерты"),
+            (self.settings_nav_btn, "Настройки", "Н", "Настройки"),
         ]
 
     def toggle_sidebar(self) -> None:
@@ -1413,15 +1441,20 @@ class MainWindow(QMainWindow):
         collapsed = self.sidebar_collapsed
         width = self.sidebar_collapsed_width if collapsed else self.sidebar_expanded_width
         self.sidebar.setFixedWidth(width)
+        self.nav_brand_block.setVisible(not collapsed)
         self.nav_title.setVisible(not collapsed)
         self.nav_subtitle.setVisible(not collapsed)
         self.sidebar_toggle_btn.setText(">>" if collapsed else "<<")
-        self.nav_layout.setContentsMargins(8 if collapsed else 14, 14, 8 if collapsed else 14, 14)
+        self.sidebar_toggle_btn.setProperty("collapsed", collapsed)
+        self.nav_layout.setContentsMargins(8 if collapsed else 14, 16, 8 if collapsed else 14, 14)
+        self.nav_layout.setSpacing(8 if collapsed else 9)
 
         for btn, expanded_text, collapsed_text, tooltip in self._nav_button_specs():
             btn.setText(collapsed_text if collapsed else expanded_text)
             btn.setToolTip(tooltip)
+            btn.setIconSize(QSize(18, 18) if collapsed else self.nav_icon_size)
             btn.setMinimumWidth(0)
+            btn.setProperty("collapsed", collapsed)
             if refresh_styles:
                 self._refresh_widget_style(btn)
 
