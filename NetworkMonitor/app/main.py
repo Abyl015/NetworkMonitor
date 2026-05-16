@@ -890,7 +890,7 @@ class MainWindow(QMainWindow):
         self.settings_profiles_list.setObjectName("settings_profile_list")
         profiles_layout.addWidget(self.settings_profiles_list, 1)
 
-        self.settings_page_btn = QPushButton("Новый профиль")
+        self.settings_page_btn = QPushButton("Управление профилями")
         self.settings_page_btn.setObjectName("settings_primary_action")
         self.settings_page_btn.clicked.connect(self.open_settings)
         profiles_layout.addWidget(self.settings_page_btn)
@@ -911,7 +911,7 @@ class MainWindow(QMainWindow):
         self.settings_live_lbl = self._settings_toggle_label("Вкл.", True)
         self.settings_dpi_lbl = self._settings_toggle_label("Вкл.", True)
         monitoring_grid.addWidget(self._settings_value_row("Сетевой интерфейс", self.settings_interface_lbl), 0, 0)
-        monitoring_grid.addWidget(self._settings_value_row("Частота sampling", self.sample_factor_lbl), 0, 1)
+        monitoring_grid.addWidget(self._settings_value_row("Частота выборки", self.sample_factor_lbl), 0, 1)
         monitoring_grid.addWidget(self._settings_value_row("Живой мониторинг", self.settings_live_lbl), 1, 0)
         monitoring_grid.addWidget(self._settings_value_row("Глубокая проверка пакетов", self.settings_dpi_lbl), 1, 1)
         monitoring_layout.addLayout(monitoring_grid)
@@ -2562,19 +2562,13 @@ IOC совпадения: {s.get('total_ioc_matches') or 0}
         ml = data.get("ml") or {}
 
         self.settings_profiles_list.clear()
-        display_profiles = [
-            ("По умолчанию", "Default"),
-            ("Высокая чувствительность", "High-Sensitivity"),
-            ("Низкая задержка", "Low-Latency"),
-            ("Пользовательский 1", "Custom 1"),
-            ("Пользовательский 2", "Custom 2"),
-        ]
-        active_name = active_profile.name or "Default"
         active_row = 0
-        for idx, (display_name, profile_name) in enumerate(display_profiles):
+        for idx, profile in enumerate(profiles):
+            display_name = profile.name or profile.filename
             item = QListWidgetItem(display_name)
-            item.setData(Qt.ItemDataRole.UserRole, active_filename if idx == 0 else None)
-            if profile_name.lower() == active_name.lower() or (idx == 0 and active_filename == "default.json"):
+            item.setToolTip(profile.filename)
+            item.setData(Qt.ItemDataRole.UserRole, profile.filename)
+            if profile.filename == active_profile.filename:
                 active_row = idx
             self.settings_profiles_list.addItem(item)
         if self.settings_profiles_list.count():
@@ -2605,6 +2599,7 @@ IOC совпадения: {s.get('total_ioc_matches') or 0}
         self.settings_status_title_lbl.setText(f"Статус активного профиля: {active_profile.name}")
         self.profile_name_lbl.setText(iface)
         self.settings_profile_file_lbl.setText(active_profile.filename)
+        self.settings_profile_file_lbl.setToolTip(str(profile_path))
         self.settings_rules_count_lbl.setText(f"{scan_threshold} scan / {dos_threshold} pps")
         self.settings_model_lbl.setText(f"Isolation Forest, {estimators} деревьев")
         self.settings_updated_lbl.setText(updated)
