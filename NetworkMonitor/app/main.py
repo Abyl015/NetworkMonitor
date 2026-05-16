@@ -40,9 +40,10 @@ from PyQt6.QtWidgets import (
 
 from NetworkMonitor.app.plot_widget import PlotWidget
 from NetworkMonitor.app.settings_dialog import SettingsDialog
-from NetworkMonitor.app.worker import CaptureWorker
+from NetworkMonitor.app.worker import CaptureWorker, EnrichmentWorker
 from NetworkMonitor.config.profile_manager import ProfileManager
 from NetworkMonitor.core.engine import NetworkEngine
+from NetworkMonitor.core.enrichment import is_public_ip
 from NetworkMonitor.core.report_builder import build_html_report, build_html_report_for_session
 from NetworkMonitor.storage.database import (
     get_last_session_id,
@@ -73,6 +74,7 @@ class MainWindow(QMainWindow):
 
         self.engine = NetworkEngine(callback=None)
         self.worker: CaptureWorker | None = None
+        self.enrichment_worker: EnrichmentWorker | None = None
         self.is_monitoring = False
         self.current_mode = "idle"
         self.last_pcap_path: str | None = None
@@ -620,6 +622,11 @@ class MainWindow(QMainWindow):
         self.pcap_clear_btn.setObjectName("pcap_action_btn")
         self.pcap_clear_btn.clicked.connect(self.clear_pcap_view)
         header.addWidget(self.pcap_clear_btn)
+
+        self.pcap_enrichment_btn = QPushButton("Проверить public IP")
+        self.pcap_enrichment_btn.setObjectName("pcap_action_btn")
+        self.pcap_enrichment_btn.clicked.connect(self.start_pcap_enrichment)
+        header.addWidget(self.pcap_enrichment_btn)
         layout.addLayout(header)
 
         summary_card = QFrame()
@@ -782,6 +789,50 @@ class MainWindow(QMainWindow):
         self.pcap_alerts_table.setColumnWidth(2, 112)
         alerts_layout.addWidget(self.pcap_alerts_table)
         layout.addWidget(alerts_card)
+
+        enrichment_card = QFrame()
+        enrichment_card.setObjectName("pcap_detail_card")
+        enrichment_layout = QVBoxLayout(enrichment_card)
+        enrichment_layout.setContentsMargins(14, 11, 14, 12)
+        enrichment_layout.setSpacing(8)
+        enrichment_title = QLabel("AbuseIPDB context")
+        enrichment_title.setObjectName("pcap_card_title")
+        enrichment_layout.addWidget(enrichment_title)
+        self.pcap_enrichment_status_label = QLabel("Enrichment запускается вручную и не влияет на IB Score.")
+        self.pcap_enrichment_status_label.setObjectName("pcap_body_text")
+        self.pcap_enrichment_status_label.setWordWrap(True)
+        enrichment_layout.addWidget(self.pcap_enrichment_status_label)
+        self.pcap_enrichment_table = QTableWidget(0, 8)
+        self.pcap_enrichment_table.setObjectName("pcap_alerts_table")
+        self.pcap_enrichment_table.setHorizontalHeaderLabels([
+            "IP",
+            "Status",
+            "Abuse score",
+            "Reports",
+            "Country",
+            "Usage type",
+            "ISP / Domain",
+            "Last reported",
+        ])
+        self.pcap_enrichment_table.verticalHeader().setVisible(False)
+        self.pcap_enrichment_table.verticalHeader().setDefaultSectionSize(28)
+        self.pcap_enrichment_table.horizontalHeader().setStretchLastSection(True)
+        self.pcap_enrichment_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.pcap_enrichment_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self.pcap_enrichment_table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        self.pcap_enrichment_table.setAlternatingRowColors(True)
+        self.pcap_enrichment_table.setShowGrid(False)
+        self.pcap_enrichment_table.setWordWrap(True)
+        self.pcap_enrichment_table.setMinimumHeight(118)
+        self.pcap_enrichment_table.setColumnWidth(0, 132)
+        self.pcap_enrichment_table.setColumnWidth(1, 108)
+        self.pcap_enrichment_table.setColumnWidth(2, 96)
+        self.pcap_enrichment_table.setColumnWidth(3, 82)
+        self.pcap_enrichment_table.setColumnWidth(4, 82)
+        self.pcap_enrichment_table.setColumnWidth(5, 132)
+        self.pcap_enrichment_table.setColumnWidth(6, 220)
+        enrichment_layout.addWidget(self.pcap_enrichment_table)
+        layout.addWidget(enrichment_card)
 
         bottom_grid = QGridLayout()
         bottom_grid.setContentsMargins(0, 0, 0, 0)
@@ -1778,6 +1829,137 @@ class MainWindow(QMainWindow):
             item.setData(Qt.ItemDataRole.UserRole, "empty")
             self.pcap_conversations_list.addItem(item)
 
+        if hasattr(self, "pcap_enrichment_table"):
+            self.pcap_enrichment_table.setRowCount(0)
+        if hasattr(self, "pcap_enrichment_status_label"):
+            self.pcap_enrichment_status_label.setText("Enrichment запускается вручную и не влияет на IB Score.")
+
+    def _extract_ips_from_text(self, text: str) -> list[str]:
+        return re.findall(r"\b(?:\d{1,3}\.){3}\d{1,3}\b", text or "")
+
+    def _collect_pcap_enrichment_ips(self, limit: int = 25) -> list[str]:
+        candidates: list[str] = []
+
+        def add_ip(ip: str) -> None:
+            if len(candidates) >= limit:
+                return
+            if ip and ip not in candidates and is_public_ip(ip):
+                candidates.append(ip)
+
+        for ip in getattr(self.engine, "attacker_stats", Counter()).keys():
+            add_ip(str(ip))
+
+        if hasattr(self, "pcap_alerts_table"):
+            for row in range(self.pcap_alerts_table.rowCount()):
+                for col in range(self.pcap_alerts_table.columnCount()):
+                    item = self.pcap_alerts_table.item(row, col)
+                    if item:
+                        for ip in self._extract_ips_from_text(item.text()):
+                            add_ip(ip)
+
+        if hasattr(self, "pcap_conversations_list"):
+            for idx in range(self.pcap_conversations_list.count()):
+                item = self.pcap_conversations_list.item(idx)
+                if item and item.data(Qt.ItemDataRole.UserRole) != "empty":
+                    for ip in self._extract_ips_from_text(item.text()):
+                        add_ip(ip)
+
+        return candidates[:limit]
+
+    def _set_pcap_enrichment_busy(self, busy: bool) -> None:
+        if hasattr(self, "pcap_enrichment_btn"):
+            self.pcap_enrichment_btn.setEnabled(not busy and not self.is_monitoring)
+
+    def _set_pcap_enrichment_message(self, text: str) -> None:
+        if hasattr(self, "pcap_enrichment_status_label"):
+            self.pcap_enrichment_status_label.setText(text)
+
+    def _format_enrichment_value(self, value) -> str:
+        if value is None or value == "":
+            return "-"
+        return str(value)
+
+    def _render_enrichment_result(self, ip: str, result: dict) -> None:
+        if not hasattr(self, "pcap_enrichment_table"):
+            return
+
+        table = self.pcap_enrichment_table
+        row_idx = None
+        for row in range(table.rowCount()):
+            item = table.item(row, 0)
+            if item and item.text() == ip:
+                row_idx = row
+                break
+
+        if row_idx is None:
+            row_idx = table.rowCount()
+            table.insertRow(row_idx)
+
+        isp_domain = " / ".join(
+            part for part in (
+                self._format_enrichment_value(result.get("isp")),
+                self._format_enrichment_value(result.get("domain")),
+            )
+            if part != "-"
+        ) or "-"
+
+        values = [
+            ip,
+            self._format_enrichment_value(result.get("status")),
+            self._format_enrichment_value(result.get("abuseConfidenceScore")),
+            self._format_enrichment_value(result.get("totalReports")),
+            self._format_enrichment_value(result.get("countryCode")),
+            self._format_enrichment_value(result.get("usageType")),
+            isp_domain,
+            self._format_enrichment_value(result.get("lastReportedAt")),
+        ]
+
+        for col, value in enumerate(values):
+            item = QTableWidgetItem(value)
+            item.setToolTip(value)
+            table.setItem(row_idx, col, item)
+
+    def start_pcap_enrichment(self) -> None:
+        if self.is_monitoring:
+            self._set_pcap_enrichment_message("Дождитесь завершения анализа перед enrichment.")
+            return
+
+        if self.enrichment_worker is not None:
+            return
+
+        if not os.environ.get("ABUSEIPDB_API_KEY", "").strip():
+            if hasattr(self, "pcap_enrichment_table"):
+                self.pcap_enrichment_table.setRowCount(0)
+            self._set_pcap_enrichment_message("ABUSEIPDB_API_KEY не настроен. Enrichment пропущен.")
+            return
+
+        candidates = self._collect_pcap_enrichment_ips(limit=25)
+        if not candidates:
+            if hasattr(self, "pcap_enrichment_table"):
+                self.pcap_enrichment_table.setRowCount(0)
+            self._set_pcap_enrichment_message("Публичные IP-адреса для проверки не найдены.")
+            return
+
+        self.pcap_enrichment_table.setRowCount(0)
+        self._set_pcap_enrichment_message(f"AbuseIPDB enrichment: проверка {len(candidates)} public IP...")
+        self._set_pcap_enrichment_busy(True)
+
+        self.enrichment_worker = EnrichmentWorker(candidates, max_requests=25)
+        self.enrichment_worker.progress.connect(self.on_enrichment_progress)
+        self.enrichment_worker.finished_signal.connect(self.on_enrichment_finished)
+        self.enrichment_worker.start()
+
+    def on_enrichment_progress(self, ip: str, result: dict) -> None:
+        self._render_enrichment_result(ip, result)
+
+    def on_enrichment_finished(self, results: dict) -> None:
+        count = len(results or {})
+        self.enrichment_worker = None
+        self._set_pcap_enrichment_busy(False)
+        self._set_pcap_enrichment_message(
+            f"AbuseIPDB enrichment завершён: {count} IP. Это внешний контекст, IB Score не изменён."
+        )
+
     # -------- data / UI refresh --------
     def load_interfaces_to_combo(self):
         self.iface_combo.clear()
@@ -2671,6 +2853,7 @@ IOC совпадения: {s.get('total_ioc_matches') or 0}
 
         self.action_btn.setEnabled(True)
         self.pcap_btn.setEnabled(True)
+        self._set_pcap_enrichment_busy(False)
         if hasattr(self, "open_main_btn"):
             self.open_main_btn.setEnabled(True)
         self.settings_btn.setEnabled(True)
@@ -2710,6 +2893,7 @@ IOC совпадения: {s.get('total_ioc_matches') or 0}
         self.action_btn.setEnabled(False)
         self.settings_btn.setEnabled(False)
         self.pcap_btn.setEnabled(False)
+        self._set_pcap_enrichment_busy(True)
         if hasattr(self, "open_main_btn"):
             self.open_main_btn.setEnabled(False)
         self.settings_page_btn.setEnabled(False)
@@ -2729,6 +2913,7 @@ IOC совпадения: {s.get('total_ioc_matches') or 0}
 
             self.settings_btn.setEnabled(False)
             self.pcap_btn.setEnabled(False)
+            self._set_pcap_enrichment_busy(True)
             if hasattr(self, "open_main_btn"):
                 self.open_main_btn.setEnabled(False)
             self.settings_page_btn.setEnabled(False)

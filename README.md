@@ -97,3 +97,17 @@ py -m venv .venv
 .\.venv\Scripts\activate
 pip install -U pip
 pip install -r requirements.txt
+```
+
+## AbuseIPDB enrichment (optional)
+
+AbuseIPDB enrichment is optional and used only as external context for public IP addresses.
+It does not replace local IOC detection and does not affect IB Score.
+
+Set the API key in PowerShell before launching the app:
+
+```powershell
+$env:ABUSEIPDB_API_KEY="your_api_key"
+```
+
+Private/internal IP addresses are not sent to AbuseIPDB. Do not commit API keys to the repository.
