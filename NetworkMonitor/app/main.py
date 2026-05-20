@@ -79,6 +79,7 @@ class MainWindow(QMainWindow):
         self.enrichment_worker: EnrichmentWorker | None = None
         self.is_monitoring = False
         self.current_mode = "idle"
+        self._active_worker_mode = "idle"
         self.last_pcap_path: str | None = None
         self.log_history: list[str] = []
         self.threat_counter: Counter[str] = Counter()
@@ -86,7 +87,7 @@ class MainWindow(QMainWindow):
         self.max_log_messages = 500
         self._live_ui_dirty = False
         self._last_live_ui_flush = 0.0
-        self._pending_worker_logs: list[str] = []
+        self._pending_worker_logs: list[tuple[str, str]] = []
         self._last_stats_refresh = 0.0
         self._last_graph_refresh = 0.0
         self._force_graph_refresh = False
@@ -2126,12 +2127,10 @@ class MainWindow(QMainWindow):
         for ip, count in merged.most_common(10):
             self.stats_list.addItem(f"{ip} — {count} событий")
 
-    def update_stats_display(self) -> None:
+    def update_pcap_stats_display(self) -> None:
+        merged = Counter(self.engine.attacker_stats)
         if hasattr(self, "pcap_stats_list"):
             self.pcap_stats_list.clear()
-        merged = Counter(self.threat_counter)
-        merged.update(self.engine.attacker_stats)
-        if hasattr(self, "pcap_stats_list"):
             if not merged:
                 item = QListWidgetItem("Нет данных")
                 item.setData(Qt.ItemDataRole.UserRole, "empty")
@@ -2149,7 +2148,15 @@ class MainWindow(QMainWindow):
             item.setData(Qt.ItemDataRole.UserRole, "empty")
             self.pcap_protocol_list.addItem(item)
         self._update_pcap_file_summary()
+
+    def update_stats_display(self) -> None:
         self.update_top_ips()
+
+    def _refresh_pcap_from_engine(self) -> None:
+        assessment = getattr(self.engine, "last_assessment", None)
+        ready = bool(getattr(self.engine, "assessment_ready", False))
+        self._refresh_pcap_assessment(assessment, ready)
+        self.update_pcap_stats_display()
 
     def flush_live_ui_updates(self, force: bool = False) -> None:
         if not force and not self._live_ui_dirty and not self._pending_worker_logs:
@@ -2160,11 +2167,15 @@ class MainWindow(QMainWindow):
         now = time.monotonic()
         self._last_live_ui_flush = now
 
-        stats_interval = 1.0 if getattr(self, "current_mode", "") == "pcap" else 0.5
+        mode = getattr(self, "current_mode", "")
+        stats_interval = 1.0 if mode == "pcap" else 0.5
         if force or now - getattr(self, "_last_stats_refresh", 0.0) >= stats_interval:
             self._last_stats_refresh = now
-            self.update_assessment_panel()
-            self.update_stats_display()
+            if mode == "pcap":
+                self._refresh_pcap_from_engine()
+            else:
+                self.update_assessment_panel()
+                self.update_stats_display()
 
     def set_status_text(self, text: str) -> None:
         status_text = text if text.startswith("Статус:") else f"Статус: {text}"
@@ -2250,17 +2261,17 @@ class MainWindow(QMainWindow):
         anom_rate = anom / seen
 
         current_index = self.pages.currentIndex() if hasattr(self, "pages") else 0
-        if force or current_index == 0 or getattr(self, "current_mode", "") != "pcap":
+        if getattr(self, "current_mode", "") == "live" and (force or current_index == 0):
             self.plot.push(pps_eff=pps_eff, anom_rate=anom_rate)
-        if hasattr(self, "pcap_plot") and (force or current_index == 1):
+        if hasattr(self, "pcap_plot") and getattr(self, "current_mode", "") == "pcap" and (force or current_index == 1):
             self.pcap_plot.push(pps_eff=pps_eff, anom_rate=anom_rate)
 
-    def _remember_log_message(self, msg: str) -> None:
+    def _remember_log_message(self, msg: str, mode: str = "live") -> None:
         self.log_buffer.append(msg)
         if len(self.log_buffer) > self.max_log_messages:
             del self.log_buffer[: len(self.log_buffer) - self.max_log_messages]
 
-        if getattr(self, "is_monitoring", False):
+        if mode == "live" and getattr(self, "is_monitoring", False):
             self._mark_alerts_dirty()
 
     def _append_log_batch_to_widget(self, widget: QTextEdit, messages: list[str]) -> None:
@@ -2276,47 +2287,61 @@ class MainWindow(QMainWindow):
             widget.setUpdatesEnabled(updates_enabled)
             widget.verticalScrollBar().setValue(widget.verticalScrollBar().maximum())
 
-    def _queue_worker_log(self, msg: str) -> None:
-        self._remember_log_message(msg)
-        self._pending_worker_logs.append(msg)
+    def _queue_worker_log(self, msg: str, mode: str) -> None:
+        if mode == "live":
+            self._remember_log_message(msg, mode="live")
+        self._pending_worker_logs.append((mode, msg))
         self._live_ui_dirty = True
 
     def _flush_pending_worker_logs(self) -> None:
         if not self._pending_worker_logs:
             return
 
-        messages = self._pending_worker_logs
+        queued = self._pending_worker_logs
         self._pending_worker_logs = []
+        live_messages = [msg for mode, msg in queued if mode == "live"]
+        pcap_messages = [msg for mode, msg in queued if mode == "pcap"]
 
-        if hasattr(self, "pcap_log_area"):
-            self._append_log_batch_to_widget(self.pcap_log_area, messages)
+        if pcap_messages and hasattr(self, "pcap_log_area"):
+            self._append_log_batch_to_widget(self.pcap_log_area, pcap_messages)
 
         parsed_pcap_rows: list[tuple[str, str, str]] = []
+        for msg in pcap_messages:
+            parsed = self._pcap_alert_from_log(msg)
+            if parsed:
+                parsed_pcap_rows.append(parsed)
+        self._append_pcap_alert_rows(parsed_pcap_rows)
+
+        if not live_messages:
+            return
+
         if hasattr(self, "events_list"):
             updates_enabled = self.events_list.updatesEnabled()
             self.events_list.setUpdatesEnabled(False)
         else:
             updates_enabled = True
         try:
-            for msg in messages:
+            for msg in live_messages:
                 plain = self._plain_log(msg)
-                parsed = self._pcap_alert_from_log(msg, plain)
-                if parsed:
-                    parsed_pcap_rows.append(parsed)
                 self._append_to_events_if_needed(msg, plain)
         finally:
             if hasattr(self, "events_list"):
                 self.events_list.setUpdatesEnabled(updates_enabled)
 
-        self._append_pcap_alert_rows(parsed_pcap_rows)
-
         if hasattr(self, "log_area"):
-            visible_messages = [msg for msg in messages if self._is_log_message_visible(msg)]
+            visible_messages = [msg for msg in live_messages if self._is_log_message_visible(msg)]
             self._append_log_batch_to_widget(self.log_area, visible_messages)
 
-    def append_log(self, msg: str) -> None:
-        self._remember_log_message(msg)
+    def _append_live_log(self, msg: str) -> None:
+        self._remember_log_message(msg, mode="live")
+        self._append_to_events_if_needed(msg)
+        if self._is_log_message_visible(msg):
+            self.log_area.append(msg)
+            self.log_area.verticalScrollBar().setValue(
+                self.log_area.verticalScrollBar().maximum()
+            )
 
+    def _append_pcap_log(self, msg: str) -> None:
         if hasattr(self, "pcap_log_area"):
             self.pcap_log_area.append(msg)
             self.pcap_log_area.verticalScrollBar().setValue(
@@ -2324,12 +2349,8 @@ class MainWindow(QMainWindow):
             )
             self._append_pcap_alert_from_log(msg)
 
-        self._append_to_events_if_needed(msg)
-        if self._is_log_message_visible(msg):
-            self.log_area.append(msg)
-            self.log_area.verticalScrollBar().setValue(
-                self.log_area.verticalScrollBar().maximum()
-            )
+    def append_log(self, msg: str) -> None:
+        self._append_live_log(msg)
 
     def _is_log_message_visible(self, msg: str) -> bool:
         show_debug = hasattr(self, "debug_checkbox") and self.debug_checkbox.isChecked()
@@ -2975,22 +2996,26 @@ IOC совпадения: {s.get('total_ioc_matches') or 0}
     # -------- worker --------
     def start_worker(self, mode: str, pcap_path: str | None = None) -> None:
         self.worker = CaptureWorker(self.engine, mode=mode, pcap_path=pcap_path)
+        self._active_worker_mode = mode
         self.worker.message.connect(self.on_worker_message)
         self.worker.finished_signal.connect(self.on_worker_finished)
         self.worker.start()
 
     def on_worker_message(self, msg: str) -> None:
-        self._queue_worker_log(msg)
+        mode = getattr(self, "_active_worker_mode", getattr(self, "current_mode", "live"))
+        self._queue_worker_log(msg, mode)
         if time.monotonic() - self._last_live_ui_flush >= 0.5:
             self.flush_live_ui_updates()
 
     def on_worker_finished(self) -> None:
+        finished_mode = getattr(self, "_active_worker_mode", getattr(self, "current_mode", "idle"))
         self._force_graph_refresh = True
         self.flush_live_ui_updates(force=True)
         self.refresh_graphs()
 
         self.is_monitoring = False
         self.current_mode = "idle"
+        self._active_worker_mode = "idle"
 
         self.action_btn.setEnabled(True)
         self.pcap_btn.setEnabled(True)
@@ -3005,9 +3030,12 @@ IOC совпадения: {s.get('total_ioc_matches') or 0}
         self._refresh_widget_style(self.action_btn)
 
         self.set_status_text("Статус: ожидание запуска")
-        self.update_assessment_panel()
-        self._update_pcap_file_summary()
-        self.append_log("<b style='color:#2563eb;'>[SYSTEM] Мониторинг / анализ остановлен.</b>")
+        if finished_mode == "pcap":
+            self._refresh_pcap_from_engine()
+            self._append_pcap_log("<b style='color:#2563eb;'>[SYSTEM] PCAP-анализ остановлен.</b>")
+        else:
+            self.update_assessment_panel()
+            self.append_log("<b style='color:#2563eb;'>[SYSTEM] Мониторинг остановлен.</b>")
 
     # -------- actions --------
     def open_pcap(self) -> None:
@@ -3040,7 +3068,7 @@ IOC совпадения: {s.get('total_ioc_matches') or 0}
         self.settings_page_btn.setEnabled(False)
 
         self.set_status_text("Статус: offline-анализ PCAP")
-        self.append_log(f"<b style='color:#2563eb;'>[SYSTEM] Запуск PCAP анализа: {file_path}</b>")
+        self._append_pcap_log(f"<b style='color:#2563eb;'>[SYSTEM] Запуск PCAP анализа: {file_path}</b>")
         self.start_worker(mode="pcap", pcap_path=file_path)
 
     def toggle_monitoring(self) -> None:
