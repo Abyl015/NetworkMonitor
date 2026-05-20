@@ -674,7 +674,7 @@ class MainWindow(QMainWindow):
         summary_grid.setContentsMargins(0, 0, 0, 0)
         summary_grid.setHorizontalSpacing(24)
         summary_grid.setVerticalSpacing(3)
-        self.pcap_file_name_label = QLabel("-")
+        self.pcap_file_name_label = QLabel("PCAP файл не выбран")
         self.pcap_file_size_label = QLabel("-")
         self.pcap_packet_count_label = QLabel("0")
         self.pcap_duration_label = QLabel("00:00:00")
@@ -718,7 +718,7 @@ class MainWindow(QMainWindow):
         assessment_text.setSpacing(3)
         self.pcap_assessment_level_label = QLabel("Нет данных")
         self.pcap_assessment_level_label.setObjectName("pcap_assessment_level")
-        self.pcap_assessment_summary_label = QLabel("Откройте PCAP-файл для анализа")
+        self.pcap_assessment_summary_label = QLabel("PCAP файл не выбран. Откройте файл, чтобы запустить offline-анализ.")
         self.pcap_assessment_summary_label.setObjectName("pcap_body_text")
         self.pcap_assessment_summary_label.setWordWrap(True)
         assessment_text.addWidget(self.pcap_assessment_level_label)
@@ -745,7 +745,7 @@ class MainWindow(QMainWindow):
         self.pcap_protocol_list = QListWidget()
         self.pcap_protocol_list.setObjectName("pcap_compact_list")
         self.pcap_protocol_list.setMinimumHeight(74)
-        protocol_empty = QListWidgetItem("Откройте PCAP-файл для анализа")
+        protocol_empty = QListWidgetItem("PCAP файл не выбран")
         protocol_empty.setData(Qt.ItemDataRole.UserRole, "empty")
         self.pcap_protocol_list.addItem(protocol_empty)
         protocol_layout.addWidget(self.pcap_protocol_list)
@@ -763,7 +763,7 @@ class MainWindow(QMainWindow):
         self.pcap_stats_list = QListWidget()
         self.pcap_stats_list.setObjectName("pcap_compact_list")
         self.pcap_stats_list.setMinimumHeight(74)
-        stats_empty = QListWidgetItem("Данные появятся после анализа")
+        stats_empty = QListWidgetItem("PCAP файл не выбран")
         stats_empty.setData(Qt.ItemDataRole.UserRole, "empty")
         self.pcap_stats_list.addItem(stats_empty)
         top_ips_layout.addWidget(self.pcap_stats_list)
@@ -781,7 +781,7 @@ class MainWindow(QMainWindow):
         self.pcap_conversations_list = QListWidget()
         self.pcap_conversations_list.setObjectName("pcap_compact_list")
         self.pcap_conversations_list.setMinimumHeight(74)
-        conversations_empty = QListWidgetItem("Данные появятся после анализа")
+        conversations_empty = QListWidgetItem("PCAP файл не выбран")
         conversations_empty.setData(Qt.ItemDataRole.UserRole, "empty")
         self.pcap_conversations_list.addItem(conversations_empty)
         conversations_layout.addWidget(self.pcap_conversations_list)
@@ -799,7 +799,7 @@ class MainWindow(QMainWindow):
         alerts_title = QLabel("Детальные алерты")
         alerts_title.setObjectName("pcap_card_title")
         alerts_layout.addWidget(alerts_title)
-        self.pcap_alerts_empty_label = QLabel("Нет данных")
+        self.pcap_alerts_empty_label = QLabel("Алерты не найдены. Выберите PCAP-файл и запустите анализ.")
         self.pcap_alerts_empty_label.setObjectName("pcap_empty_label")
         self.pcap_alerts_empty_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         alerts_layout.addWidget(self.pcap_alerts_empty_label)
@@ -827,10 +827,12 @@ class MainWindow(QMainWindow):
         enrichment_layout = QVBoxLayout(enrichment_card)
         enrichment_layout.setContentsMargins(14, 11, 14, 12)
         enrichment_layout.setSpacing(8)
-        enrichment_title = QLabel("AbuseIPDB context")
+        enrichment_title = QLabel("AbuseIPDB / Threat Intelligence context")
         enrichment_title.setObjectName("pcap_card_title")
         enrichment_layout.addWidget(enrichment_title)
-        self.pcap_enrichment_status_label = QLabel("Enrichment запускается вручную и не влияет на IB Score.")
+        self.pcap_enrichment_status_label = QLabel(
+            "Threat Intelligence enrichment используется как внешний контекст и не изменяет IB Score."
+        )
         self.pcap_enrichment_status_label.setObjectName("pcap_body_text")
         self.pcap_enrichment_status_label.setWordWrap(True)
         enrichment_layout.addWidget(self.pcap_enrichment_status_label)
@@ -883,7 +885,8 @@ class MainWindow(QMainWindow):
         self.pcap_log_area.setObjectName("pcap_log_panel")
         self.pcap_log_area.setReadOnly(True)
         self.pcap_log_area.document().setMaximumBlockCount(self.max_log_messages)
-        self.pcap_log_area.setMinimumHeight(168)
+        self.pcap_log_area.setPlaceholderText("Лог PCAP-анализа появится после запуска offline workflow.")
+        self.pcap_log_area.setMinimumHeight(184)
         log_layout.addWidget(self.pcap_log_area)
         bottom_grid.addWidget(log_card, 0, 0)
 
@@ -896,14 +899,14 @@ class MainWindow(QMainWindow):
         timeline_title.setObjectName("pcap_card_title")
         timeline_layout.addWidget(timeline_title)
         self.pcap_plot = PlotWidget("Пакеты/сек")
-        self.pcap_plot.setMinimumHeight(168)
+        self.pcap_plot.setMinimumHeight(184)
         timeline_layout.addWidget(self.pcap_plot)
         bottom_grid.addWidget(timeline_card, 0, 1)
         bottom_grid.setColumnStretch(0, 1)
         bottom_grid.setColumnStretch(1, 1)
         layout.addLayout(bottom_grid)
 
-        self.pcap_state_label = QLabel("Состояние: ожидание файла")
+        self.pcap_state_label = QLabel("Состояние: PCAP файл не выбран")
         self.pcap_state_label.setObjectName("pcap_state_label")
         layout.addWidget(self.pcap_state_label)
         return scroll
@@ -1917,6 +1920,10 @@ class MainWindow(QMainWindow):
             value /= 1024
         return f"{size} B"
 
+    def _set_pcap_state(self, text: str) -> None:
+        if hasattr(self, "pcap_state_label"):
+            self.pcap_state_label.setText(f"Состояние: {text}")
+
     def _update_pcap_file_summary(self, file_path: str | None = None) -> None:
         if not hasattr(self, "pcap_file_name_label"):
             return
@@ -1930,7 +1937,7 @@ class MainWindow(QMainWindow):
             except OSError:
                 self.pcap_file_size_label.setText("-")
         else:
-            self.pcap_file_name_label.setText("-")
+            self.pcap_file_name_label.setText("PCAP файл не выбран")
             self.pcap_file_size_label.setText("-")
 
         packets = int(getattr(self.engine, "packet_count", 0) or 0)
@@ -1946,7 +1953,12 @@ class MainWindow(QMainWindow):
         if not ready or not assessment:
             self.pcap_score_label.setText("-")
             self.pcap_assessment_level_label.setText("Нет данных")
-            self.pcap_assessment_summary_label.setText("Откройте PCAP-файл для анализа")
+            if self.last_pcap_path:
+                self.pcap_assessment_summary_label.setText("PCAP файл загружен. Запустите анализ для расчёта IB Score.")
+            else:
+                self.pcap_assessment_summary_label.setText(
+                    "PCAP файл не выбран. Откройте файл, чтобы запустить offline-анализ."
+                )
             return
 
         self.pcap_score_label.setText(str(assessment.get("overall_score", "-")))
@@ -2030,27 +2042,31 @@ class MainWindow(QMainWindow):
         if hasattr(self, "pcap_alerts_table"):
             self.pcap_alerts_table.setRowCount(0)
         if hasattr(self, "pcap_alerts_empty_label"):
+            self.pcap_alerts_empty_label.setText("Алерты не найдены. Выберите PCAP-файл и запустите анализ.")
             self.pcap_alerts_empty_label.setVisible(True)
         if hasattr(self, "pcap_protocol_list"):
             self.pcap_protocol_list.clear()
-            item = QListWidgetItem("Откройте PCAP-файл для анализа")
+            item = QListWidgetItem("PCAP файл не выбран")
             item.setData(Qt.ItemDataRole.UserRole, "empty")
             self.pcap_protocol_list.addItem(item)
         if hasattr(self, "pcap_stats_list"):
             self.pcap_stats_list.clear()
-            item = QListWidgetItem("Данные появятся после анализа")
+            item = QListWidgetItem("PCAP файл не выбран")
             item.setData(Qt.ItemDataRole.UserRole, "empty")
             self.pcap_stats_list.addItem(item)
         if hasattr(self, "pcap_conversations_list"):
             self.pcap_conversations_list.clear()
-            item = QListWidgetItem("Данные появятся после анализа")
+            item = QListWidgetItem("PCAP файл не выбран")
             item.setData(Qt.ItemDataRole.UserRole, "empty")
             self.pcap_conversations_list.addItem(item)
 
         if hasattr(self, "pcap_enrichment_table"):
             self.pcap_enrichment_table.setRowCount(0)
         if hasattr(self, "pcap_enrichment_status_label"):
-            self.pcap_enrichment_status_label.setText("Enrichment запускается вручную и не влияет на IB Score.")
+            self.pcap_enrichment_status_label.setText(
+                "Threat Intelligence enrichment используется как внешний контекст и не изменяет IB Score."
+            )
+        self._set_pcap_state("PCAP файл не выбран")
 
     def _extract_ips_from_text(self, text: str) -> list[str]:
         return re.findall(r"\b(?:\d{1,3}\.){3}\d{1,3}\b", text or "")
@@ -2209,19 +2225,19 @@ class MainWindow(QMainWindow):
         if hasattr(self, "pcap_stats_list"):
             self.pcap_stats_list.clear()
             if not merged:
-                item = QListWidgetItem("Нет данных")
+                item = QListWidgetItem("Нет подозрительных IP по результатам анализа")
                 item.setData(Qt.ItemDataRole.UserRole, "empty")
                 self.pcap_stats_list.addItem(item)
             for ip, count in merged.most_common(10):
-                line = f"{ip} -> {count} events"
+                line = f"{ip} -> {count} событий"
                 self.pcap_stats_list.addItem(line)
         if hasattr(self, "pcap_protocol_list"):
             packets = int(getattr(self.engine, "packet_count", 0) or 0)
             self.pcap_protocol_list.clear()
             if packets:
-                item = QListWidgetItem("Нет данных")
+                item = QListWidgetItem("Детализация протоколов недоступна для текущего анализа")
             else:
-                item = QListWidgetItem("Откройте PCAP-файл для анализа")
+                item = QListWidgetItem("PCAP файл не выбран")
             item.setData(Qt.ItemDataRole.UserRole, "empty")
             self.pcap_protocol_list.addItem(item)
         self._update_pcap_file_summary()
@@ -3279,6 +3295,7 @@ IOC совпадения: {s.get('total_ioc_matches') or 0}
         self.last_pcap_path = file_path
         self.clear_pcap_view()
         self._update_pcap_file_summary(file_path)
+        self._set_pcap_state("PCAP файл загружен")
         self.is_monitoring = True
         self.current_mode = "pcap"
 
@@ -3290,8 +3307,9 @@ IOC совпадения: {s.get('total_ioc_matches') or 0}
             self.open_main_btn.setEnabled(False)
         self.settings_page_btn.setEnabled(False)
 
-        self.set_status_text("Статус: offline-анализ PCAP")
-        self._append_pcap_log(f"<b style='color:#2563eb;'>[SYSTEM] Запуск PCAP анализа: {file_path}</b>")
+        self.set_status_text("Статус: Анализ выполняется...")
+        self._append_pcap_log(f"<b style='color:#2563eb;'>[SYSTEM] PCAP файл загружен: {file_path}</b>")
+        self._append_pcap_log(f"<b style='color:#2563eb;'>[SYSTEM] Анализ выполняется...</b>")
         self.start_worker(mode="pcap", pcap_path=file_path)
 
     def toggle_monitoring(self) -> None:
