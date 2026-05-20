@@ -7,6 +7,13 @@ import ipaddress
 from urllib.parse import urlparse
 
 
+def _strip_safe_inline_comment(line: str) -> str:
+    for index, char in enumerate(line):
+        if char == "#" and index > 0 and line[index - 1].isspace():
+            return line[:index].strip()
+    return line
+
+
 def _safe_read_lines(file_path: Path) -> set[str]:
     if not file_path.exists():
         return set()
@@ -16,8 +23,11 @@ def _safe_read_lines(file_path: Path) -> set[str]:
         for raw_line in f:
             line = raw_line.strip()
 
-            # пропускаем пустые строки и комментарии
             if not line or line.startswith("#"):
+                continue
+
+            line = _strip_safe_inline_comment(line)
+            if not line:
                 continue
 
             items.add(line)
@@ -31,7 +41,6 @@ def normalize_ip(value: str) -> str | None:
 
     value = str(value).strip()
 
-    # если вдруг пришел формат ip:port
     if ":" in value and value.count(":") == 1:
         left, right = value.split(":", 1)
         if left.replace(".", "").isdigit() and right.isdigit():
@@ -52,20 +61,22 @@ def normalize_domain(value: str) -> str | None:
     if not value:
         return None
 
-    # если пришел URL
     if "://" in value:
         parsed = urlparse(value)
-        value = parsed.netloc or parsed.path
+        value = parsed.hostname or parsed.netloc or parsed.path
 
-    # убираем путь
     if "/" in value:
         value = value.split("/", 1)[0]
 
-    # убираем порт у domain:port
-    if ":" in value:
-        value = value.split(":", 1)[0]
+    if ":" in value and value.count(":") == 1:
+        left, right = value.rsplit(":", 1)
+        if left and right.isdigit():
+            value = left
 
-    value = value.strip(".").lower()
+    value = value.strip().rstrip(".").lower()
+
+    if value.startswith("[") and value.endswith("]"):
+        value = value[1:-1]
 
     if not value:
         return None
@@ -81,6 +92,47 @@ class IOCMatch:
     reason: str | None = None
 
 
+def load_ip_iocs(file_path: Path) -> set[str]:
+    return {
+        ip
+        for ip in (normalize_ip(item) for item in _safe_read_lines(file_path))
+        if ip
+    }
+
+
+def load_domain_iocs(file_path: Path) -> set[str]:
+    return {
+        domain
+        for domain in (normalize_domain(item) for item in _safe_read_lines(file_path))
+        if domain
+    }
+
+
+def match_domain_ioc(domain_value: str, malicious_domains: set[str]) -> IOCMatch:
+    domain_norm = normalize_domain(domain_value)
+    if not domain_norm:
+        return IOCMatch(False)
+
+    if domain_norm in malicious_domains:
+        return IOCMatch(
+            matched=True,
+            ioc_type="malicious_domain",
+            value=domain_norm,
+            reason="Domain IOC match",
+        )
+
+    for bad_domain in malicious_domains:
+        if domain_norm.endswith("." + bad_domain):
+            return IOCMatch(
+                matched=True,
+                ioc_type="malicious_domain",
+                value=bad_domain,
+                reason=f"Domain IOC subdomain match: {domain_norm} -> {bad_domain}",
+            )
+
+    return IOCMatch(False)
+
+
 @dataclass
 class IOCStore:
     base_dir: Path = field(default_factory=lambda: Path(__file__).resolve().parents[1] / "data" / "iocs")
@@ -94,15 +146,8 @@ class IOCStore:
         self.reload()
 
     def reload(self):
-        raw_ips = _safe_read_lines(self.ip_file)
-        raw_domains = _safe_read_lines(self.domain_file)
-
-        self.malicious_ips = {
-            ip for ip in (normalize_ip(x) for x in raw_ips) if ip
-        }
-        self.malicious_domains = {
-            d for d in (normalize_domain(x) for x in raw_domains) if d
-        }
+        self.malicious_ips = load_ip_iocs(self.ip_file)
+        self.malicious_domains = load_domain_iocs(self.domain_file)
 
     def stats(self) -> dict:
         return {
@@ -121,36 +166,13 @@ class IOCStore:
                 matched=True,
                 ioc_type="malicious_ip",
                 value=ip_norm,
-                reason="IP найден в локальной IOC-базе",
+                reason="IP IOC match",
             )
 
         return IOCMatch(False)
 
     def check_domain(self, domain_value: str) -> IOCMatch:
-        domain_norm = normalize_domain(domain_value)
-        if not domain_norm:
-            return IOCMatch(False)
-
-        # exact match
-        if domain_norm in self.malicious_domains:
-            return IOCMatch(
-                matched=True,
-                ioc_type="malicious_domain",
-                value=domain_norm,
-                reason="Домен найден в локальной IOC-базе",
-            )
-
-        # subdomain match: sub.bad.com -> bad.com
-        for bad_domain in self.malicious_domains:
-            if domain_norm.endswith("." + bad_domain):
-                return IOCMatch(
-                    matched=True,
-                    ioc_type="malicious_domain",
-                    value=bad_domain,
-                    reason=f"Домен {domain_norm} относится к IOC-домену {bad_domain}",
-                )
-
-        return IOCMatch(False)
+        return match_domain_ioc(domain_value, self.malicious_domains)
 
     def check_ip_pair(self, src_ip: str, dst_ip: str) -> IOCMatch:
         src_match = self.check_ip(src_ip)

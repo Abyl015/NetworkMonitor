@@ -10,6 +10,7 @@ import ipaddress
 from NetworkMonitor.core.dedup import AlertDedup
 from scapy.layers.tls.handshake import TLSClientHello
 from NetworkMonitor.core.features import extract_features
+from NetworkMonitor.core.iocs import load_domain_iocs, load_ip_iocs, match_domain_ioc, normalize_ip
 from NetworkMonitor.core.rules import RuleEngine
 from NetworkMonitor.core.scoring import calc_security_assessment, format_assessment_line
 from NetworkMonitor.core.ml import MLDetector, MLConfig
@@ -134,27 +135,15 @@ class NetworkEngine:
             )
 
     def _load_malicious_domains(self) -> set[str]:
-        domains = set()
-
         try:
-            if not self.domain_ioc_file.exists():
-                return domains
-
-            with self.domain_ioc_file.open("r", encoding="utf-8") as f:
-                for raw_line in f:
-                    line = raw_line.strip().lower()
-
-                    if not line or line.startswith("#"):
-                        continue
-
-                    domains.add(line)
+            return load_domain_iocs(self.domain_ioc_file)
         except Exception as e:
             self._log(
                 f"<span style='color:#f38ba8;'>[IOC ERROR] Не удалось загрузить IOC domain list: "
                 f"{type(e).__name__}: {e}</span>"
             )
 
-        return domains
+        return set()
 
     def _extract_dns_query_name(self, pkt) -> str | None:
         try:
@@ -277,21 +266,8 @@ class NetworkEngine:
         return feat.sport in service_ports or feat.dport in service_ports
 
     def _check_ioc_domain(self, domain: str) -> str | None:
-        if not domain:
-            return None
-
-        domain = domain.strip().lower()
-
-        # exact match
-        if domain in self.malicious_domains:
-            return domain
-
-        # subdomain match
-        for bad_domain in self.malicious_domains:
-            if domain.endswith("." + bad_domain):
-                return bad_domain
-
-        return None
+        match = match_domain_ioc(domain, self.malicious_domains)
+        return match.value if match.matched else None
 
     def _get_possible_local_host(self, src_ip: str, dst_ip: str) -> str:
         if self._is_private_ip(src_ip):
@@ -567,18 +543,21 @@ class NetworkEngine:
             if ioc_ip:
                 local_ip = feat.src_ip if self._is_private_ip(feat.src_ip) else feat.dst_ip
                 event_key = (feat.src_ip, feat.dst_ip, ioc_ip)
+                ioc_ip_reason = "IP IOC match"
 
                 if event_key not in self.ioc_seen:
                     self.ioc_seen.add(event_key)
 
                     self._log(
                         f"<span style='color:#f38ba8;'>[IOC MATCH] "
-                        f"{feat.src_ip} -> {feat.dst_ip} | IOC IP: {ioc_ip} | possible host: {local_ip}</span>"
+                        f"{feat.src_ip} -> {feat.dst_ip} | IOC IP: {ioc_ip} | "
+                        f"reason={ioc_ip_reason} | possible host: {local_ip}</span>"
                     )
 
                     self._safe_db(
                         "IOC_MATCH",
-                        f"{feat.src_ip} -> {feat.dst_ip} | matched_ip={ioc_ip} | possible_host={local_ip}"
+                        f"{feat.src_ip} -> {feat.dst_ip} | matched_ip={ioc_ip} | "
+                        f"reason={ioc_ip_reason} | possible_host={local_ip}"
                     )
                     self._touch_incident(
                         local_ip,
@@ -616,6 +595,11 @@ class NetworkEngine:
                 if not matched_domain:
                     continue
                 domain_ioc_hit = True
+                domain_ioc_reason = (
+                    "DNS domain IOC match"
+                    if domain_source == "dns"
+                    else f"{domain_source.upper()} domain IOC match"
+                )
 
                 local_ip = self._get_possible_local_host(feat.src_ip, feat.dst_ip)
                 domain_event_key = (feat.src_ip, feat.dst_ip, domain_source, matched_domain)
@@ -628,13 +612,15 @@ class NetworkEngine:
                 self._log(
                     f"<span style='color:#f38ba8;'>[IOC DOMAIN MATCH] "
                     f"{feat.src_ip} -> {feat.dst_ip} | source: {domain_source.upper()} | "
-                    f"domain: {domain_value} | matched: {matched_domain} | possible host: {local_ip}</span>"
+                    f"domain: {domain_value} | matched: {matched_domain} | "
+                    f"reason={domain_ioc_reason} | possible host: {local_ip}</span>"
                 )
 
                 self._safe_db(
                     "IOC_DOMAIN_MATCH",
                     f"{feat.src_ip} -> {feat.dst_ip} | source={domain_source} | "
-                    f"domain={domain_value} | matched_domain={matched_domain} | possible_host={local_ip}"
+                    f"domain={domain_value} | matched_domain={matched_domain} | "
+                    f"reason={domain_ioc_reason} | possible_host={local_ip}"
                 )
                 self._touch_incident(
                     local_ip,
@@ -854,32 +840,24 @@ class NetworkEngine:
             )
 
     def _load_malicious_ips(self) -> set[str]:
-        ips = set()
-
         try:
-            if not self.ioc_file.exists():
-                return ips
-
-            with self.ioc_file.open("r", encoding="utf-8") as f:
-                for raw_line in f:
-                    line = raw_line.strip()
-
-                    if not line or line.startswith("#"):
-                        continue
-
-                    ips.add(line)
+            return load_ip_iocs(self.ioc_file)
         except Exception as e:
             self._log(
                 f"<span style='color:#f38ba8;'>[IOC ERROR] Не удалось загрузить IOC IP list: {type(e).__name__}: {e}</span>"
             )
 
-        return ips
+        return set()
 
     def _check_ioc_ip(self, src_ip: str, dst_ip: str) -> str | None:
-        if src_ip in self.malicious_ips:
-            return src_ip
-        if dst_ip in self.malicious_ips:
-            return dst_ip
+        src_ip_norm = normalize_ip(src_ip)
+        if src_ip_norm in self.malicious_ips:
+            return src_ip_norm
+
+        dst_ip_norm = normalize_ip(dst_ip)
+        if dst_ip_norm in self.malicious_ips:
+            return dst_ip_norm
+
         return None
 
     # -------------------------
