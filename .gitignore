@@ -26,6 +26,7 @@ exports/
 
 # Local design notes
 NetworkMonitor/docs/
+.local/
 
 # Temporary files
 rate-limits-access.md
