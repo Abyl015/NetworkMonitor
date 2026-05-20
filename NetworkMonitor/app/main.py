@@ -16,6 +16,7 @@ from PyQt6.QtGui import QBrush, QColor, QIcon
 from PyQt6.QtWidgets import (
     QApplication,
     QAbstractItemView,
+    QDialog,
     QMainWindow,
     QTextEdit,
     QVBoxLayout,
@@ -42,6 +43,7 @@ from NetworkMonitor.app.plot_widget import PlotWidget
 from NetworkMonitor.app.settings_dialog import SettingsDialog
 from NetworkMonitor.app.worker import CaptureWorker, EnrichmentWorker
 from NetworkMonitor.config.profile_manager import ProfileManager
+from NetworkMonitor.config.secrets import delete_secret, has_local_secret, has_secret, set_secret
 from NetworkMonitor.core.engine import NetworkEngine
 from NetworkMonitor.core.enrichment import is_public_ip
 from NetworkMonitor.core.report_builder import build_html_report, build_html_report_for_session
@@ -913,6 +915,7 @@ class MainWindow(QMainWindow):
     def _settings_toggle_label(self, text: str, enabled: bool = True) -> QLabel:
         label = QLabel(text)
         label.setObjectName("settings_toggle" if enabled else "settings_toggle_off")
+        label.setEnabled(enabled)
         label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         return label
 
@@ -920,6 +923,116 @@ class MainWindow(QMainWindow):
         label = QLabel(text)
         label.setObjectName("settings_slider")
         return label
+
+    def _provider_status_label(self, text: str, enabled: bool = True) -> QLabel:
+        label = QLabel(text)
+        label.setObjectName("threat_provider_status" if enabled else "threat_provider_status_off")
+        label.setWordWrap(True)
+        label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+        return label
+
+    def _make_provider_row(
+            self,
+            provider: str,
+            status_label: QLabel,
+            action_widget: QWidget | None = None,
+    ) -> QWidget:
+        row = QWidget()
+        row.setObjectName("threat_provider_row")
+        row.setMinimumHeight(42)
+        layout = QHBoxLayout(row)
+        layout.setContentsMargins(10, 6, 10, 6)
+        layout.setSpacing(12)
+
+        provider_label = QLabel(provider)
+        provider_label.setObjectName("threat_provider_name")
+        provider_label.setMinimumWidth(92)
+
+        if action_widget is None:
+            action_widget = QLabel("Недоступно")
+            action_widget.setObjectName("threat_provider_unavailable")
+            action_widget.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        action_widget.setMinimumWidth(84)
+
+        layout.addWidget(provider_label, 2)
+        layout.addWidget(status_label, 3)
+        layout.addWidget(action_widget, 0)
+        return row
+
+    def _refresh_threat_intel_settings(self) -> None:
+        if not hasattr(self, "abuseipdb_status_lbl"):
+            return
+
+        env_configured = bool(os.environ.get("ABUSEIPDB_API_KEY", "").strip())
+        if env_configured:
+            self.abuseipdb_status_lbl.setText("Настроен через переменную окружения")
+            self.abuseipdb_status_lbl.setToolTip("ABUSEIPDB_API_KEY")
+        elif has_local_secret("ABUSEIPDB_API_KEY"):
+            self.abuseipdb_status_lbl.setText("Настроен локально")
+            self.abuseipdb_status_lbl.setToolTip("********")
+        else:
+            self.abuseipdb_status_lbl.setText("Не настроен")
+            self.abuseipdb_status_lbl.setToolTip("")
+
+    def open_abuseipdb_key_dialog(self) -> None:
+        dialog = QDialog(self)
+        dialog.setWindowTitle("AbuseIPDB API Key")
+        dialog.setModal(True)
+
+        layout = QVBoxLayout(dialog)
+        layout.setContentsMargins(18, 16, 18, 16)
+        layout.setSpacing(12)
+
+        intro = QLabel("AbuseIPDB enrichment используется только как внешний контекст.")
+        intro.setWordWrap(True)
+        layout.addWidget(intro)
+
+        if os.environ.get("ABUSEIPDB_API_KEY", "").strip():
+            env_note = QLabel("Ключ задан через переменную окружения ABUSEIPDB_API_KEY.")
+            env_note.setWordWrap(True)
+            env_note.setObjectName("settings_checks")
+            layout.addWidget(env_note)
+
+        key_input = QLineEdit()
+        key_input.setEchoMode(QLineEdit.EchoMode.Password)
+        key_input.setPlaceholderText("********" if has_local_secret("ABUSEIPDB_API_KEY") else "Введите API key")
+        layout.addWidget(key_input)
+
+        buttons = QHBoxLayout()
+        buttons.setContentsMargins(0, 0, 0, 0)
+        buttons.setSpacing(8)
+
+        save_btn = QPushButton("Сохранить")
+        delete_btn = QPushButton("Удалить")
+        cancel_btn = QPushButton("Отмена")
+
+        save_btn.setObjectName("settings_primary_action")
+        delete_btn.setObjectName("settings_secondary_action")
+        cancel_btn.setObjectName("settings_secondary_action")
+
+        def save_key() -> None:
+            value = key_input.text().strip()
+            if value:
+                set_secret("ABUSEIPDB_API_KEY", value)
+            self._refresh_threat_intel_settings()
+            dialog.accept()
+
+        def delete_key() -> None:
+            delete_secret("ABUSEIPDB_API_KEY")
+            self._refresh_threat_intel_settings()
+            dialog.accept()
+
+        save_btn.clicked.connect(save_key)
+        delete_btn.clicked.connect(delete_key)
+        cancel_btn.clicked.connect(dialog.reject)
+
+        buttons.addStretch(1)
+        buttons.addWidget(save_btn)
+        buttons.addWidget(delete_btn)
+        buttons.addWidget(cancel_btn)
+        layout.addLayout(buttons)
+
+        dialog.exec()
 
     def _build_settings_page(self) -> QWidget:
         page = QWidget()
@@ -936,7 +1049,7 @@ class MainWindow(QMainWindow):
         body.setSpacing(14)
 
         profiles_card, profiles_layout = self._make_settings_card("Профили мониторинга")
-        profiles_card.setMinimumWidth(270)
+        profiles_card.setMinimumWidth(340)
         self.settings_profiles_list = QListWidget()
         self.settings_profiles_list.setObjectName("settings_profile_list")
         profiles_layout.addWidget(self.settings_profiles_list, 1)
@@ -945,7 +1058,34 @@ class MainWindow(QMainWindow):
         self.settings_page_btn.setObjectName("settings_primary_action")
         self.settings_page_btn.clicked.connect(self.open_settings)
         profiles_layout.addWidget(self.settings_page_btn)
-        body.addWidget(profiles_card, 1)
+        left_column = QWidget()
+        left_column.setMinimumWidth(340)
+        left_layout = QVBoxLayout(left_column)
+        left_layout.setContentsMargins(0, 0, 0, 0)
+        left_layout.setSpacing(10)
+        left_layout.addWidget(profiles_card, 1)
+
+        threat_card, threat_layout = self._make_settings_card("API ключи / Threat Intelligence")
+        threat_card.setObjectName("threat_intel_card")
+        threat_card.setMinimumHeight(300)
+        self.abuseipdb_status_lbl = self._provider_status_label("Не настроен")
+        self.abuseipdb_configure_btn = QPushButton("Настроить")
+        self.abuseipdb_configure_btn.setObjectName("threat_provider_action")
+        self.abuseipdb_configure_btn.clicked.connect(self.open_abuseipdb_key_dialog)
+        threat_layout.addWidget(
+            self._make_provider_row("AbuseIPDB", self.abuseipdb_status_lbl, self.abuseipdb_configure_btn)
+        )
+
+        self.virustotal_status_lbl = self._provider_status_label("Скоро", False)
+        threat_layout.addWidget(self._make_provider_row("VirusTotal", self.virustotal_status_lbl))
+        self.otx_status_lbl = self._provider_status_label("Скоро", False)
+        threat_layout.addWidget(self._make_provider_row("AlienVault OTX", self.otx_status_lbl))
+        self.greynoise_status_lbl = self._provider_status_label("Скоро", False)
+        threat_layout.addWidget(self._make_provider_row("GreyNoise", self.greynoise_status_lbl))
+        self.shodan_status_lbl = self._provider_status_label("Скоро", False)
+        threat_layout.addWidget(self._make_provider_row("Shodan", self.shodan_status_lbl))
+        left_layout.addWidget(threat_card, 0)
+        body.addWidget(left_column, 1)
 
         center = QWidget()
         center_layout = QVBoxLayout(center)
@@ -1927,7 +2067,7 @@ class MainWindow(QMainWindow):
         if self.enrichment_worker is not None:
             return
 
-        if not os.environ.get("ABUSEIPDB_API_KEY", "").strip():
+        if not has_secret("ABUSEIPDB_API_KEY"):
             if hasattr(self, "pcap_enrichment_table"):
                 self.pcap_enrichment_table.setRowCount(0)
             self._set_pcap_enrichment_message("ABUSEIPDB_API_KEY не настроен. Enrichment пропущен.")
@@ -2798,6 +2938,7 @@ IOC совпадения: {s.get('total_ioc_matches') or 0}
         self.settings_ioc_path_lbl.setToolTip(str(db_path))
         self.ioc_count_lbl.setText(f"{ioc_count} индикаторов загружено")
         self.settings_feeds_lbl.setText("AlienVault   MISP")
+        self._refresh_threat_intel_settings()
         self.settings_report_lbl.setText("HTML")
         self.settings_report_options_lbl.setText("Инциденты вкл.  |  IOC совпадения вкл.  |  Сырые логи выкл.")
         self.settings_db_path_lbl.setText(short_db_path)

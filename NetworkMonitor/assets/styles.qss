@@ -167,6 +167,18 @@ QFrame#settings_status_card {
     border-radius: 8px;
 }
 
+QFrame#threat_intel_card {
+    background-color: #ffffff;
+    border: 1px solid #d7dfe8;
+    border-radius: 8px;
+}
+
+QWidget#threat_provider_row {
+    background-color: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+}
+
 QFrame#alerts_filter_bar,
 QFrame#alerts_table_card,
 QFrame#alerts_detail_card,
@@ -418,6 +430,40 @@ QLabel#settings_checks {
     border-radius: 6px;
     padding: 6px 8px;
     font-size: 12px;
+}
+
+QLabel#threat_provider_name {
+    color: #020617;
+    font-size: 12px;
+    font-weight: 800;
+    padding: 0;
+}
+
+QLabel#threat_provider_status,
+QLabel#threat_provider_status_off {
+    background-color: transparent;
+    border: none;
+    font-size: 12px;
+    font-weight: 700;
+    padding: 0;
+}
+
+QLabel#threat_provider_status {
+    color: #166534;
+}
+
+QLabel#threat_provider_status_off {
+    color: #64748b;
+}
+
+QLabel#threat_provider_unavailable {
+    background-color: #e5e7eb;
+    color: #6b7280;
+    border: 1px solid #d1d5db;
+    border-radius: 6px;
+    font-size: 11px;
+    font-weight: 800;
+    padding: 6px 10px;
 }
 
 QLabel#control_label {
@@ -868,6 +914,14 @@ QPushButton#settings_secondary_action {
     min-height: 28px;
     border-radius: 6px;
     font-weight: 600;
+    padding: 0 12px;
+}
+
+QPushButton#threat_provider_action {
+    min-height: 30px;
+    min-width: 84px;
+    border-radius: 6px;
+    font-weight: 700;
     padding: 0 12px;
 }
 
