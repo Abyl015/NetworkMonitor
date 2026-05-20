@@ -67,10 +67,39 @@ def load_qss(app: QApplication) -> None:
         app.setStyleSheet(qss_path.read_text(encoding="utf-8"))
 
 
+def load_app_icon() -> QIcon | None:
+    icons_dir = Path(__file__).resolve().parents[1] / "assets" / "icons"
+    for icon_name in ("icon.ico", "icon.svg"):
+        icon_path = icons_dir / icon_name
+        if not icon_path.exists():
+            continue
+
+        icon = QIcon(str(icon_path))
+        if not icon.isNull():
+            return icon
+
+    return None
+
+
+def set_windows_app_id() -> None:
+    if sys.platform != "win32":
+        return
+
+    try:
+        import ctypes
+
+        app_id = "NetworkMonitor.AINetworkGuardian"
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(app_id)
+    except Exception:
+        pass
+
+
 class MainWindow(QMainWindow):
-    def __init__(self):
+    def __init__(self, app_icon: QIcon | None = None):
         super().__init__()
         self.setWindowTitle("AI Network Guardian v2.0")
+        if app_icon is not None:
+            self.setWindowIcon(app_icon)
         self.resize(1440, 860)
         self.setMinimumSize(1180, 720)
 
@@ -3392,9 +3421,13 @@ IOC совпадения: {s.get('total_ioc_matches') or 0}
 
 
 def main():
+    set_windows_app_id()
     app = QApplication(sys.argv)
+    app_icon = load_app_icon()
+    if app_icon is not None:
+        app.setWindowIcon(app_icon)
     load_qss(app)
-    win = MainWindow()
+    win = MainWindow(app_icon)
     win.show()
     sys.exit(app.exec())
 
