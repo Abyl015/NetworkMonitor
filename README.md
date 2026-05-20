@@ -111,3 +111,11 @@ $env:ABUSEIPDB_API_KEY="your_api_key"
 ```
 
 Private/internal IP addresses are not sent to AbuseIPDB. Do not commit API keys to the repository.
+
+## API Keys / Threat Intelligence
+
+AbuseIPDB can be configured either through the Settings screen or with the `ABUSEIPDB_API_KEY` environment variable.
+Local secrets are stored only in `NetworkMonitor/config/secrets.local.json`; this file is ignored by Git and must not be committed.
+
+Private/internal IP addresses are not sent to AbuseIPDB. Enrichment is context only and does not affect IB Score.
+VirusTotal, AlienVault OTX, GreyNoise, and Shodan are planned future providers.

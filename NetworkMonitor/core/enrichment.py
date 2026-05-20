@@ -2,12 +2,13 @@ from __future__ import annotations
 
 import ipaddress
 import json
-import os
 import threading
 import time
 import urllib.error
 import urllib.parse
 import urllib.request
+
+from NetworkMonitor.config.secrets import get_secret
 
 
 ABUSEIPDB_CHECK_URL = "https://api.abuseipdb.com/api/v2/check"
@@ -88,7 +89,7 @@ def enrich_ip_abuseipdb(ip: str, max_age_days: int = 90) -> dict:
     if not is_public_ip(normalized_ip):
         return _result(normalized_ip, "skipped", reason="non_public_ip")
 
-    api_key = os.environ.get(ABUSEIPDB_API_KEY_ENV, "").strip()
+    api_key = (get_secret(ABUSEIPDB_API_KEY_ENV) or "").strip()
     if not api_key:
         return _result(normalized_ip, "disabled", reason="missing_api_key")
 
@@ -173,7 +174,7 @@ def enrich_public_ips(ips: list[str], max_requests: int = 25) -> dict[str, dict]
             results[normalized_ip] = _result(normalized_ip, "skipped", reason="non_public_ip")
             continue
 
-        if not os.environ.get(ABUSEIPDB_API_KEY_ENV, "").strip():
+        if not get_secret(ABUSEIPDB_API_KEY_ENV):
             results[normalized_ip] = _result(normalized_ip, "disabled", reason="missing_api_key")
             continue
 
