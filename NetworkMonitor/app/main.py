@@ -1582,6 +1582,54 @@ class MainWindow(QMainWindow):
         summary_layout.addWidget(self.alert_summary_destination)
         details_layout.addWidget(summary_card)
 
+        triage_card = QFrame()
+        triage_card.setObjectName("alerts_detail_section")
+        triage_layout = QVBoxLayout(triage_card)
+        triage_layout.setContentsMargins(16, 14, 16, 14)
+        triage_layout.setSpacing(8)
+        triage_title = QLabel("Аналитический разбор")
+        triage_title.setObjectName("alerts_card_title")
+        triage_layout.addWidget(triage_title)
+
+        self.alert_triage_severity = QLabel("-")
+        self.alert_triage_confidence = QLabel("-")
+        self.alert_triage_evidence = QLabel("-")
+        self.alert_triage_action = QLabel("-")
+        self.alert_triage_false_positive = QLabel("-")
+        for label in (
+            self.alert_triage_severity,
+            self.alert_triage_confidence,
+            self.alert_triage_evidence,
+            self.alert_triage_action,
+            self.alert_triage_false_positive,
+        ):
+            label.setObjectName("alerts_body_text")
+            label.setWordWrap(True)
+
+        triage_grid = QGridLayout()
+        triage_grid.setContentsMargins(0, 0, 0, 0)
+        triage_grid.setHorizontalSpacing(10)
+        triage_grid.setVerticalSpacing(6)
+        triage_grid.setColumnStretch(0, 0)
+        triage_grid.setColumnStretch(1, 1)
+        for row, (title_text, value_label) in enumerate(
+            (
+                ("Критичность", self.alert_triage_severity),
+                ("Уверенность", self.alert_triage_confidence),
+                ("Доказательства", self.alert_triage_evidence),
+                ("Рекомендуемое действие", self.alert_triage_action),
+                ("Возможное ложное срабатывание", self.alert_triage_false_positive),
+            )
+        ):
+            title_label = QLabel(f"{title_text}:")
+            title_label.setObjectName("alerts_body_text")
+            title_label.setAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft)
+            triage_grid.addWidget(title_label, row, 0)
+            triage_grid.addWidget(value_label, row, 1)
+
+        triage_layout.addLayout(triage_grid)
+        details_layout.addWidget(triage_card)
+
         detail_section = QFrame()
         detail_section.setObjectName("alerts_detail_section")
         detail_section_layout = QVBoxLayout(detail_section)
@@ -2545,6 +2593,7 @@ class MainWindow(QMainWindow):
             self.alert_summary_destination.setText("Назначение: -")
             self.alert_summary_description.setText("-")
             self.linked_session_label.setText(self._linked_alert_session_context(None))
+            self._clear_alert_triage()
         if hasattr(self, "alert_details"):
             self.alert_details.clear()
 
@@ -2623,6 +2672,149 @@ class MainWindow(QMainWindow):
         ips = re.findall(r"\b(?:\d{1,3}\.){3}\d{1,3}\b", description or "")
         return ", ".join(dict.fromkeys(ips)) if ips else "-"
 
+    def _alert_description_field(self, description: str, field_name: str) -> str | None:
+        pattern = rf"(?:^|[|\s]){re.escape(field_name)}=([^|]+)"
+        match = re.search(pattern, description or "", flags=re.IGNORECASE)
+        if not match:
+            return None
+        value = match.group(1).strip()
+        return value or None
+
+    def _derive_alert_triage(
+        self,
+        alert_type: str,
+        description: str,
+        verdict: str,
+        src: str,
+        dst: str,
+        ips: str,
+    ) -> dict[str, str]:
+        alert_type_text = alert_type or "-"
+        alert_type_norm = alert_type_text.upper()
+        verdict_norm = (verdict or "").upper()
+        text = description or ""
+        text_lower = text.lower()
+
+        is_ioc = alert_type_norm in {"IOC_MATCH", "IOC_DOMAIN_MATCH"} or any(
+            marker in text_lower
+            for marker in ("matched_ip=", "matched_domain=", "ioc ip", "ioc domain")
+        )
+        has_ioc_evidence = is_ioc or "ioc" in text_lower
+        is_malicious = verdict_norm == "MALICIOUS" or "verdict=malicious" in text_lower
+        is_suspicious = verdict_norm == "SUSPICIOUS" or "verdict=suspicious" in text_lower
+        is_anomaly_verdict = verdict_norm == "ANOMALY" or "verdict=anomaly" in text_lower
+        is_scan = alert_type_norm == "PORT_SCAN_SUSPECT" or any(
+            marker in text_lower for marker in ("scan", "scan_rule", "unique_ports")
+        )
+        is_dos = alert_type_norm == "DOS_SUSPECT" or any(
+            marker in text_lower for marker in ("dos", "flood", "pps=")
+        )
+        is_ml = alert_type_norm == "ML_ANOMALY" or any(
+            marker in text_lower for marker in ("ml_anomaly", "ml-anomaly", "ml anomaly")
+        )
+        is_infected = alert_type_norm == "INFECTED_HOST_CANDIDATE" or "infected_host" in text_lower
+        is_incident = alert_type_norm == "INCIDENT"
+        is_event_verdict = alert_type_norm == "EVENT_VERDICT"
+        is_system = alert_type_norm == "SYSTEM"
+
+        if is_ioc or (is_event_verdict and is_malicious) or (is_incident and is_malicious) or is_infected:
+            severity = "Высокая"
+        elif (is_event_verdict and is_suspicious) or is_scan or is_dos or (is_incident and is_suspicious) or is_ml:
+            severity = "Средняя"
+        elif (is_event_verdict and is_anomaly_verdict) or is_system or verdict_norm in {"NORMAL", "LOW", "INFO", "ANOMALY"}:
+            severity = "Низкая"
+        else:
+            severity = "Неизвестно"
+
+        if is_ioc or (is_malicious and has_ioc_evidence):
+            confidence = "Высокая"
+        elif is_scan or is_dos or is_suspicious or is_infected or (
+            is_ml and any(marker in text_lower for marker in ("ioc", "scan", "dos", "rule", "verdict="))
+        ):
+            confidence = "Средняя"
+        else:
+            confidence = "Низкая"
+
+        evidence_parts = []
+        for field_name in (
+            "matched_ip",
+            "matched_domain",
+            "domain",
+            "source",
+            "verdict",
+            "reasons",
+            "max_unique_ports",
+            "pps",
+            "dport",
+        ):
+            value = self._alert_description_field(text, field_name)
+            if value:
+                evidence_parts.append(f"{field_name}={value}")
+
+        if src != "-" or dst != "-":
+            evidence_parts.append(f"flow={src} -> {dst}")
+        if ips != "-":
+            evidence_parts.append(f"IPs={ips}")
+        if not evidence_parts:
+            if verdict_norm and verdict_norm != "-":
+                evidence_parts.append(f"verdict={verdict_norm}")
+            evidence_parts.append(f"type={alert_type_text}")
+
+        evidence = "; ".join(dict.fromkeys(evidence_parts))
+
+        if is_ioc:
+            action = (
+                "Рекомендуется проверить индикатор, локальный хост и историю DNS/flow; "
+                "изоляцию или блокировку применять только после подтверждения."
+            )
+            false_positive = (
+                "Может быть связано с устаревшим индикатором, shared/CDN/sinkhole инфраструктурой "
+                "или внутренним allowlist. Требует подтверждения."
+            )
+        elif is_malicious:
+            action = "Рекомендуется приоритетно проверить инцидент и признаки компрометации хоста."
+            false_positive = "Может быть связано с легитимной активностью, если есть подтвержденный бизнес-контекст."
+        elif is_scan:
+            action = "Рекомендуется проверить источник, назначение и список портов/сервисов."
+            false_positive = (
+                "Может быть связано со сканером уязвимостей, инвентаризацией, discovery или администрированием."
+            )
+        elif is_dos:
+            action = "Рекомендуется проверить интенсивность трафика, состояние целевого сервиса и концентрацию источников."
+            false_positive = "Может быть связано с резервным копированием, discovery или ожидаемым высокообъемным трафиком."
+        elif is_ml:
+            action = "Рекомендуется сопоставить ML-аномалию с IOC, rule-сигналами и контекстом сессии до эскалации."
+            false_positive = "Может быть связано с прогревом baseline, редким легитимным приложением или локальным discovery-шумом."
+        else:
+            action = "Рекомендуется проверить сырые детали и связанную оценку сессии."
+            false_positive = "Требует подтверждения дополнительными признаками перед эскалацией."
+
+        return {
+            "severity": severity,
+            "confidence": confidence,
+            "evidence": evidence,
+            "recommended_action": action,
+            "false_positive_note": false_positive,
+        }
+
+    def _set_alert_triage(self, triage: dict[str, str]) -> None:
+        if not hasattr(self, "alert_triage_severity"):
+            return
+        self.alert_triage_severity.setText(triage.get("severity") or "-")
+        self.alert_triage_confidence.setText(triage.get("confidence") or "-")
+        self.alert_triage_evidence.setText(triage.get("evidence") or "-")
+        self.alert_triage_action.setText(triage.get("recommended_action") or "-")
+        self.alert_triage_false_positive.setText(triage.get("false_positive_note") or "-")
+
+    def _clear_alert_triage(self) -> None:
+        self._set_alert_triage({
+            "severity": "-",
+            "confidence": "-",
+            "evidence": "-",
+            "recommended_action": "-",
+            "false_positive_note": "-",
+        })
+
     def _linked_alert_session_context(self, session_id) -> str:
         empty_text = "Нет связанной оценки сессии"
         if session_id is None:
@@ -2669,6 +2861,7 @@ IB Score: {session_data.get('final_ib_score') if session_data.get('final_ib_scor
         ips = self._extract_alert_ips(description or "")
         src, dst = self._extract_alert_endpoints(description or "")
         session_context = self._linked_alert_session_context(session_id)
+        triage = self._derive_alert_triage(alert_type or "", description or "", display_verdict, src, dst, ips)
         if hasattr(self, "alert_summary_title"):
             self.alert_summary_title.setText(f"Детали алерта: ALR-{int(alert_id):03d}" if str(alert_id).isdigit() else f"Детали алерта: {alert_id}")
             self._set_verdict_badge(self.alert_summary_verdict, display_verdict)
@@ -2678,6 +2871,7 @@ IB Score: {session_data.get('final_ib_score') if session_data.get('final_ib_scor
             self.alert_summary_destination.setText(f"Назначение: {dst}")
             self.alert_summary_description.setText(description or "-")
             self.linked_session_label.setText(session_context)
+            self._set_alert_triage(triage)
         detail = f"""ID: {alert_id}
 Время: {timestamp or '-'}
 ID сессии: {session_id if session_id is not None else '-'}
