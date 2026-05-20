@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import html
+import ipaddress
 import json
 import re
 from collections import Counter
@@ -273,6 +274,249 @@ def _has_activity_without_linked_alerts(stats: dict[str, Any], alerts: list[dict
     return incidents > 0 or anomalies > 0
 
 
+def _to_int(value: Any, default: int = 0) -> int:
+    try:
+        return int(float(value))
+    except (TypeError, ValueError):
+        return default
+
+
+def _to_float(value: Any, default: float | None = None) -> float | None:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _alert_text_blob(
+    alerts: list[dict[str, Any]],
+    top_types: list[tuple],
+    findings: list[Any],
+    summary: str | None,
+) -> str:
+    parts = [summary or ""]
+    parts.extend(str(item) for item in findings or [])
+    parts.extend(str(alert.get("alert_type") or "") for alert in alerts)
+    parts.extend(str(alert.get("description") or "") for alert in alerts)
+    parts.extend(str(alert_type or "") for alert_type, _count in top_types or [])
+    return " ".join(parts).lower()
+
+
+def _build_analyst_assessment(data: dict[str, Any]) -> list[tuple[str, str]]:
+    assessment = data.get("assessment") or {}
+    stats = data.get("stats") or {}
+    alerts = data.get("alerts") or []
+    top_types = data.get("top_alert_types") or []
+    findings = assessment.get("findings") or []
+    blob = _alert_text_blob(alerts, top_types, findings, assessment.get("summary"))
+
+    score = _to_float(assessment.get("score"))
+    total_risk = _to_float(assessment.get("total_risk"))
+    ioc_count = _to_int(stats.get("ioc_matches"))
+    anomaly_count = _to_int(stats.get("anomalies"))
+    incident_count = _to_int(stats.get("incidents"))
+    has_ioc = ioc_count > 0 or "ioc" in blob
+    has_malicious = "malicious" in blob or "ioc_match" in blob or "ioc_domain_match" in blob
+    has_scan = "scan" in blob or "unique_ports" in blob
+    has_dos = "dos" in blob or "flood" in blob or "pps=" in blob
+    has_ml = "ml" in blob or "anomal" in blob or "аномал" in blob
+    has_suspicious = "suspicious" in blob or has_scan or has_dos
+
+    high_priority = (
+        has_ioc
+        or incident_count > 0
+        or has_malicious
+        or (score is not None and score < 60)
+        or (total_risk is not None and total_risk >= 0.7)
+    )
+    medium_priority = (
+        anomaly_count > 0
+        or has_suspicious
+        or has_ml
+        or (score is not None and score < 80)
+        or (total_risk is not None and total_risk >= 0.35)
+    )
+
+    if high_priority:
+        priority = "Высокий"
+        overall = (
+            "Отчёт содержит значимые индикаторы риска. Данные следует рассматривать как основание "
+            "для приоритетной аналитической проверки, а не как самостоятельное доказательство компрометации."
+        )
+    elif medium_priority:
+        priority = "Средний"
+        overall = (
+            "Отчёт содержит события, требующие сопоставления с сетевым контекстом, журналами и ожидаемой "
+            "активностью узлов."
+        )
+    else:
+        priority = "Низкий"
+        overall = (
+            "По текущим данным сильные признаки инцидента не выделены. Рекомендуется продолжить наблюдение "
+            "и проверять новые срабатывания в контексте среды."
+        )
+
+    if has_ioc:
+        next_step = "Рекомендуется проверить узлы и соединения, связанные с IOC-срабатываниями."
+        note = "IOC-срабатывания требуют проверки актуальности индикатора и контекста соединения."
+    elif anomaly_count > 0 or has_ml:
+        next_step = "Рекомендуется сопоставить ML-аномалии с сетевыми событиями и IOC-контекстом."
+        note = "ML-аномалии могут отражать как подозрительную, так и редкую легитимную активность."
+    elif has_scan:
+        next_step = "Рекомендуется проверить источники сканирования и назначение затронутых портов."
+        note = "Сканирование может быть связано с администрированием, инвентаризацией или проверками безопасности."
+    elif has_dos:
+        next_step = "Рекомендуется проверить всплески трафика, целевые сервисы и распределение источников."
+        note = "Высокая интенсивность трафика требует подтверждения по журналам сервисов и сетевой инфраструктуры."
+    else:
+        next_step = "Рекомендуется проверить ключевые алерты и связанную оценку сессии."
+        note = (
+            "События требуют дополнительной проверки, так как текущие данные не являются достаточным "
+            "доказательством компрометации."
+        )
+
+    return [
+        ("Общая оценка", overall),
+        ("Приоритет", priority),
+        ("Рекомендуемое действие", next_step),
+        ("Примечание аналитика", note),
+    ]
+
+
+def _render_analyst_assessment(data: dict[str, Any]) -> str:
+    return f"""
+    <section class="report-section">
+        <h2>Аналитическая оценка</h2>
+        {_render_kv(_build_analyst_assessment(data))}
+    </section>
+    """
+
+
+def _is_public_ip_for_report(value: Any) -> bool:
+    try:
+        ip = ipaddress.ip_address(str(value))
+    except ValueError:
+        return False
+    return not (ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_multicast or ip.is_reserved)
+
+
+def _threat_intel_rows(data: dict[str, Any]) -> list[dict[str, Any]]:
+    source = (
+        data.get("threat_intel")
+        or data.get("enrichment")
+        or data.get("enrichment_results")
+        or []
+    )
+    items: list[tuple[Any, Any]]
+    if isinstance(source, dict):
+        items = list(source.items())
+    elif isinstance(source, list):
+        items = [(None, item) for item in source]
+    else:
+        return []
+
+    rows: list[dict[str, Any]] = []
+    for key, item in items:
+        if not isinstance(item, dict):
+            continue
+        ip_value = item.get("ip") or key
+        if not ip_value or not _is_public_ip_for_report(ip_value):
+            continue
+        isp_usage = " / ".join(
+            str(part)
+            for part in (item.get("isp"), item.get("usageType"))
+            if not _is_empty(part)
+        )
+        rows.append({
+            "ip": ip_value,
+            "status": item.get("status"),
+            "abuse_score": item.get("abuseConfidenceScore"),
+            "total_reports": item.get("totalReports"),
+            "country": item.get("countryCode"),
+            "isp_usage": isp_usage or None,
+            "last_reported": item.get("lastReportedAt"),
+            "analyst_note": (
+                "External reputation data is contextual and requires manual validation. "
+                "Shared hosting, CDN, VPN, or cloud infrastructure may cause false positives."
+            ),
+        })
+    return rows
+
+
+def _render_threat_intelligence(data: dict[str, Any]) -> str:
+    rows = _threat_intel_rows(data)
+    if not rows:
+        body = (
+            '<p class="muted">'
+            + _safe("Данные Threat Intelligence enrichment недоступны. Отчёт не выполняет внешние API-запросы автоматически.")
+            + "</p>"
+        )
+    else:
+        table_rows = "".join(
+            "<tr>"
+            f"<td>{_safe(row.get('ip'))}</td>"
+            f"<td>{_safe(row.get('status'))}</td>"
+            f"<td>{_safe(row.get('abuse_score'))}</td>"
+            f"<td>{_safe(row.get('total_reports'))}</td>"
+            f"<td>{_safe(row.get('country'))}</td>"
+            f"<td>{_safe(row.get('isp_usage'))}</td>"
+            f"<td>{_safe(row.get('last_reported'))}</td>"
+            f"<td>{_safe(row.get('analyst_note'))}</td>"
+            "</tr>"
+            for row in rows
+        )
+        body = (
+            '<table class="data-table"><tr><th>IP address</th><th>Lookup status</th>'
+            "<th>Abuse confidence score</th><th>Total reports</th><th>Country</th>"
+            "<th>ISP / usage type</th><th>Last reported</th><th>Analyst note</th></tr>"
+            f"{table_rows}</table>"
+        )
+
+    return f"""
+    <section class="report-section">
+        <h2>Threat Intelligence Enrichment</h2>
+        {body}
+    </section>
+    """
+
+
+def _render_privacy_note() -> str:
+    return f"""
+    <section class="report-section">
+        <h2>Примечание о конфиденциальности</h2>
+        <p>{_safe("Внешнее обогащение выполняется только для публичных IP-адресов и используется как дополнительный аналитический контекст. Внутренние/private IP-адреса, API-ключи, локальные имена хостов и чувствительные параметры не должны включаться в отчёт или отправляться во внешние сервисы.")}</p>
+        <p class="muted">{_safe("Отчёт формируется из локальных результатов анализа и сохранённых данных сессии. Внешняя репутационная информация, если она присутствует, не является доказательством сама по себе.")}</p>
+    </section>
+    """
+
+
+def _render_detection_limitations() -> str:
+    return f"""
+    <section class="report-section">
+        <h2>Ограничения обнаружения</h2>
+        <p>{_safe("Результаты анализа следует рассматривать как индикаторы риска. ML-аномалии, IOC-срабатывания и внешняя репутационная информация требуют дополнительной проверки аналитиком. Система не выполняет автоматическую блокировку и не должна использоваться как единственный источник решения об инциденте.")}</p>
+        {_render_list([
+            "IB Score является индикатором оценки риска, а не финальным forensic-заключением.",
+            "ML-аномалии могут включать ложные срабатывания и редкое легитимное поведение.",
+            "IOC-срабатывания могут быть устаревшими или относиться к shared/CDN/cloud инфраструктуре.",
+            "Threat Intelligence enrichment не доказывает вредоносность само по себе.",
+            "Перед containment/blocking требуется ручная аналитическая проверка.",
+            "Текущая система является локальным IDS/monitoring prototype, а не полноценной SIEM/SOAR/IPS платформой.",
+        ], "Нет данных")}
+    </section>
+    """
+
+
+def _risk_component_label(name: Any) -> str:
+    labels = {
+        "network_risk": "Сетевой риск",
+        "ml_risk": "ML-риск",
+        "ioc_risk": "IOC-риск",
+        "host_compromise_risk": "Риск компрометации хоста",
+    }
+    return labels.get(str(name), str(name))
+
+
 def _render_report(data: dict[str, Any]) -> str:
     assessment = data["assessment"]
     stats = data["stats"]
@@ -286,7 +530,10 @@ def _render_report(data: dict[str, Any]) -> str:
         top_types,
     )
 
-    component_rows = list((assessment.get("components") or {}).items())
+    component_rows = [
+        (_risk_component_label(name), value)
+        for name, value in (assessment.get("components") or {}).items()
+    ]
     alert_rows = "".join(
         "<tr>"
         f"<td>{_safe(alert.get('id'))}</td>"
@@ -473,6 +720,10 @@ def _render_report(data: dict[str, Any]) -> str:
         ])}
         <div class="summary-note"><b>Вывод:</b> {_safe(assessment.get("summary"), "Не сохранено")}</div>
     </section>
+    {_render_analyst_assessment(data)}
+    {_render_threat_intelligence(data)}
+    {_render_privacy_note()}
+    {_render_detection_limitations()}
     <section class="report-section">
         <h2>Состав оценки</h2>
         {_render_kv(component_rows) if component_rows else '<p class="muted">Не сохранено</p>'}
