@@ -4,6 +4,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, Any, List
 
+from NetworkMonitor.core.paths import profiles_dir, settings_path
+
 
 @dataclass
 class Profile:
@@ -17,9 +19,8 @@ class Profile:
 
 class ProfileManager:
     def __init__(self):
-        base = Path(__file__).resolve().parent
-        self.profiles_dir = base / "profiles"
-        self.settings_path = base / "settings.json"
+        self.profiles_dir = profiles_dir()
+        self.settings_path = settings_path()
         self.profiles_dir.mkdir(parents=True, exist_ok=True)
         self._ensure_default_profile()
 

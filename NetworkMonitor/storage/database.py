@@ -1,11 +1,10 @@
 import sqlite3
 from contextlib import contextmanager
-from pathlib import Path
 
-STORAGE_DIR = Path(__file__).resolve().parent
-STORAGE_DIR.mkdir(parents=True, exist_ok=True)
+from NetworkMonitor.core.paths import database_path, user_data_dir
 
-DB_PATH = STORAGE_DIR / "traffic_data.db"
+STORAGE_DIR = user_data_dir()
+DB_PATH = database_path()
 
 ALERT_COLUMNS = {
     "session_id": "INTEGER",

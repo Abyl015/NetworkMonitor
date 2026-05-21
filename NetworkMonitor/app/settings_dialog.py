@@ -11,6 +11,7 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt
 
 from NetworkMonitor.config.profile_manager import ProfileManager, Profile
+from NetworkMonitor.core.paths import models_dir
 
 
 def _safe_filename_stem(name: str) -> str:
@@ -26,9 +27,7 @@ def _safe_profile_key(name: str) -> str:
 
 
 def _model_path_for_profile(profile_stem: str) -> Path:
-    pkg_dir = Path(__file__).resolve().parents[1]  # .../NetworkMonitor
-    models_dir = pkg_dir / "storage" / "models"
-    return models_dir / f"model_{_safe_profile_key(profile_stem)}.joblib"
+    return models_dir() / f"model_{_safe_profile_key(profile_stem)}.joblib"
 
 
 class SettingsDialog(QDialog):

@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import time
-from pathlib import Path
+import sys
 from collections import Counter
 from typing import Optional
 import scapy.all as scapy
@@ -17,6 +17,7 @@ from NetworkMonitor.core.ml import MLDetector, MLConfig
 from datetime import datetime
 from NetworkMonitor.storage.database import init_db, add_alert, save_session
 from NetworkMonitor.core.session import MonitoringSession
+from NetworkMonitor.core.paths import bundled_iocs_dir, models_dir
 scapy.conf.noipaddrs = True
 
 
@@ -40,9 +41,10 @@ class NetworkEngine:
         self.last_ib_score = 100
         self.last_ib_level = "Высокий уровень ИБ"
 
-        self.ioc_file = Path(__file__).resolve().parents[1] / "data" / "iocs" / "malicious_ips.txt"
+        iocs_dir = bundled_iocs_dir()
+        self.ioc_file = iocs_dir / "malicious_ips.txt"
         self.malicious_ips = self._load_malicious_ips()
-        self.domain_ioc_file = Path(__file__).resolve().parents[1] / "data" / "iocs" / "malicious_domains.txt"
+        self.domain_ioc_file = iocs_dir / "malicious_domains.txt"
         self.malicious_domains = self._load_malicious_domains()
         self.domain_ioc_seen = set()
         self.ioc_seen = set()
@@ -278,6 +280,27 @@ class NetworkEngine:
     # -------------------------
     # Capture
     # -------------------------
+    def _platform_capture_hint(self, error: Exception | str) -> str:
+        text = str(error).lower()
+        pcap_markers = ("npcap", "winpcap", "pcap", "libpcap", "packet.dll", "bpf")
+        permission_markers = (
+            "permission",
+            "operation not permitted",
+            "access is denied",
+            "you don't have permission",
+            "root",
+            "cap_net_raw",
+            "bpf",
+        )
+
+        if sys.platform == "win32" and any(marker in text for marker in pcap_markers):
+            return "Npcap is missing or unavailable. Install Npcap and restart NetworkMonitor."
+
+        if sys.platform in {"darwin", "linux"} and any(marker in text for marker in permission_markers + pcap_markers):
+            return "Packet capture permissions are required. Run with appropriate privileges or grant capture permissions."
+
+        return "Live capture could not start. Check the selected interface, driver, and permissions."
+
     def list_interfaces(self):
         result = []
 
@@ -297,7 +320,8 @@ class NetworkEngine:
                     "iface_obj": iface,
                 })
         except Exception as e:
-            self._log(f"<span style='color:#f38ba8;'>[IFACE ERROR] {type(e).__name__}: {e}</span>")
+            hint = self._platform_capture_hint(e)
+            self._log(f"<span style='color:#f38ba8;'>[IFACE ERROR] {type(e).__name__}: {e}. {hint}</span>")
 
         return result
 
@@ -308,10 +332,15 @@ class NetworkEngine:
         try:
             interfaces = scapy.get_working_ifaces()
         except Exception as e:
+            hint = self._platform_capture_hint(e)
             self._log(
-                f"<span style='color:#f38ba8;'>[IFACE ERROR] {type(e).__name__}: {e}</span>"
+                f"<span style='color:#f38ba8;'>[IFACE ERROR] {type(e).__name__}: {e}. {hint}</span>"
             )
-            return scapy.conf.iface
+            return None
+
+        if not interfaces:
+            self._log("<span style='color:#f38ba8;'>[IFACE ERROR] No capture interfaces are available.</span>")
+            return None
 
         # 1. если пользователь выбрал вручную
         if self.selected_iface_name:
@@ -347,7 +376,11 @@ class NetworkEngine:
             if best_iface is None:
                 best_iface = iface
 
-        return best_iface or scapy.conf.iface
+        if best_iface is not None:
+            return best_iface
+
+        self._log("<span style='color:#f38ba8;'>[IFACE ERROR] No usable capture interface was found.</span>")
+        return None
 
     def start_capture(self):
 
@@ -376,6 +409,10 @@ class NetworkEngine:
 
 
             active_iface = self.get_working_iface()
+            if active_iface is None:
+                self._log("<span style='color:#f38ba8;'>[CAPTURE ERROR] Live capture was not started because no usable interface is available.</span>")
+                return
+
             iface_desc = (
                 getattr(active_iface, "description", None)
                 or getattr(active_iface, "name", None)
@@ -419,16 +456,19 @@ class NetworkEngine:
                 time.sleep(0.2)
 
         except PermissionError as e:
+            hint = self._platform_capture_hint(e)
             self._log(
-                f"<span style='color:#f38ba8;'>[CAPTURE ERROR] Недостаточно прав: {e}</span>"
+                f"<span style='color:#f38ba8;'>[CAPTURE ERROR] Недостаточно прав: {e}. {hint}</span>"
             )
         except OSError as e:
+            hint = self._platform_capture_hint(e)
             self._log(
-                f"<span style='color:#f38ba8;'>[CAPTURE ERROR] Ошибка интерфейса/драйвера: {e}</span>"
+                f"<span style='color:#f38ba8;'>[CAPTURE ERROR] Ошибка интерфейса/драйвера: {e}. {hint}</span>"
             )
         except Exception as e:
+            hint = self._platform_capture_hint(e)
             self._log(
-                f"<span style='color:#f38ba8;'>Ошибка захвата: {type(e).__name__}: {e}</span>"
+                f"<span style='color:#f38ba8;'>Ошибка захвата: {type(e).__name__}: {e}. {hint}</span>"
             )
         finally:
             self.current_session.stopped_at = datetime.now()
@@ -1056,15 +1096,13 @@ class NetworkEngine:
 
         self._emit_incident_if_needed(host)
     def _build_ml(self, profile_name: str, ml_cfg: MLConfig) -> MLDetector:
-        pkg_dir = Path(__file__).resolve().parents[1]
-        models_dir = pkg_dir / "storage" / "models"
-        models_dir.mkdir(parents=True, exist_ok=True)
+        model_dir = models_dir()
 
         safe_name = "".join(
             ch if ch.isalnum() or ch in ("-", "_") else "_"
             for ch in profile_name
         )
-        model_path = models_dir / f"model_{safe_name}.joblib"
+        model_path = model_dir / f"model_{safe_name}.joblib"
 
         return MLDetector(model_path=model_path, cfg=ml_cfg)
 

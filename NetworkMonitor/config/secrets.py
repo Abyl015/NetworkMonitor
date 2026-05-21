@@ -2,11 +2,12 @@ from __future__ import annotations
 
 import json
 import os
-from pathlib import Path
 from typing import Any
 
+from NetworkMonitor.core.paths import secrets_path
 
-SECRETS_FILE = Path(__file__).resolve().parent / "secrets.local.json"
+
+SECRETS_FILE = secrets_path()
 
 
 def _read_local_secrets() -> dict[str, str]:

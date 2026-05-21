@@ -46,6 +46,7 @@ from NetworkMonitor.config.profile_manager import ProfileManager
 from NetworkMonitor.config.secrets import delete_secret, has_local_secret, has_secret, set_secret
 from NetworkMonitor.core.engine import NetworkEngine
 from NetworkMonitor.core.enrichment import is_public_ip
+from NetworkMonitor.core.paths import assets_dir, database_path, icons_dir, reports_dir
 from NetworkMonitor.core.report_builder import build_html_report, build_html_report_for_session
 from NetworkMonitor.storage.database import (
     get_last_session_id,
@@ -61,16 +62,15 @@ from NetworkMonitor.storage.database import (
 
 
 def load_qss(app: QApplication) -> None:
-    base_dir = Path(__file__).resolve().parents[1]
-    qss_path = base_dir / "assets" / "styles.qss"
+    qss_path = assets_dir() / "styles.qss"
     if qss_path.exists():
         app.setStyleSheet(qss_path.read_text(encoding="utf-8"))
 
 
 def load_app_icon() -> QIcon | None:
-    icons_dir = Path(__file__).resolve().parents[1] / "assets" / "icons"
+    app_icons_dir = icons_dir()
     for icon_name in ("icon.ico", "icon.svg"):
-        icon_path = icons_dir / icon_name
+        icon_path = app_icons_dir / icon_name
         if not icon_path.exists():
             continue
 
@@ -150,7 +150,7 @@ class MainWindow(QMainWindow):
         self.sidebar_collapsed_width = 64
         self.sidebar_collapsed = False
         self.nav_icon_size = QSize(20, 20)
-        self.nav_icons_dir = Path(__file__).resolve().parents[1] / "assets" / "icons"
+        self.nav_icons_dir = icons_dir()
 
         sidebar = QFrame()
         sidebar.setObjectName("sidebar")
@@ -1185,8 +1185,10 @@ class MainWindow(QMainWindow):
 
         storage_card, storage_layout = self._make_settings_card("База данных и хранилище")
         self.settings_db_path_lbl = self._settings_field_label("-")
+        self.settings_db_status_lbl = self._settings_field_label("-")
         self.settings_db_counts_lbl = self._settings_slider_label("-")
-        storage_layout.addWidget(self._settings_value_row("Путь к базе", self.settings_db_path_lbl))
+        storage_layout.addWidget(self._settings_value_row("Хранилище", self.settings_db_path_lbl))
+        storage_layout.addWidget(self._settings_value_row("База данных", self.settings_db_status_lbl))
         storage_layout.addWidget(self._settings_value_row("Записи", self.settings_db_counts_lbl))
         center_layout.addWidget(storage_card)
         body.addWidget(center, 2)
@@ -3128,14 +3130,15 @@ IOC совпадения: {s.get('total_ioc_matches') or 0}
             return
 
         report_path = s[11]
-        if report_path and os.path.exists(report_path):
-            webbrowser.open(report_path)
+        if report_path and Path(report_path).exists():
+            webbrowser.open(Path(report_path).resolve().as_uri())
             return
 
+        default_report_path = reports_dir() / f"network_session_{session_id}_report.html"
         file_path, _ = QFileDialog.getSaveFileName(
             self,
             "Сохранить HTML-отчёт по сессии",
-            f"network_session_{session_id}_report.html",
+            str(default_report_path),
             "HTML report (*.html)",
         )
         if not file_path:
@@ -3143,9 +3146,10 @@ IOC совпадения: {s.get('total_ioc_matches') or 0}
 
         try:
             html_report = build_html_report_for_session(session_id)
-            with open(file_path, "w", encoding="utf-8") as f:
-                f.write(html_report)
-            update_session_report_path(session_id, file_path)
+            report_file = Path(file_path)
+            report_file.parent.mkdir(parents=True, exist_ok=True)
+            report_file.write_text(html_report, encoding="utf-8")
+            update_session_report_path(session_id, str(report_file))
             self.load_sessions()
             for row in range(self.sessions_list.count()):
                 refreshed_item = self.sessions_list.item(row)
@@ -3154,7 +3158,7 @@ IOC совпадения: {s.get('total_ioc_matches') or 0}
                     self.show_session_details(refreshed_item)
                     break
             QMessageBox.information(self, "Готово", "HTML-отчёт по выбранной сессии сформирован.")
-            webbrowser.open(file_path)
+            webbrowser.open(report_file.resolve().as_uri())
         except Exception as e:
             QMessageBox.warning(
                 self,
@@ -3203,7 +3207,7 @@ IOC совпадения: {s.get('total_ioc_matches') or 0}
         ioc_count = len(getattr(self.engine, "malicious_ips", [])) + len(getattr(self.engine, "malicious_domains", []))
         sessions_count = len(get_sessions(limit=200))
         alerts_count = len(query_alerts(limit=200))
-        db_path = Path(__file__).resolve().parents[1] / "storage" / "traffic_data.db"
+        db_path = database_path()
         short_db_path = f".../{db_path.parent.name}/{db_path.name}"
         ml_percent = min(100, max(0, int(contamination * 10000)))
         anomaly_percent = min(100, max(0, int(int(scan_threshold or 0) / 100 * 100))) if str(scan_threshold).isdigit() else 0
@@ -3231,8 +3235,10 @@ IOC совпадения: {s.get('total_ioc_matches') or 0}
         self._refresh_threat_intel_settings()
         self.settings_report_lbl.setText("HTML")
         self.settings_report_options_lbl.setText("Инциденты вкл.  |  IOC совпадения вкл.  |  Сырые логи выкл.")
-        self.settings_db_path_lbl.setText(short_db_path)
+        self.settings_db_path_lbl.setText("Локальное хранилище приложения")
         self.settings_db_path_lbl.setToolTip(str(db_path))
+        self.settings_db_status_lbl.setText("Активна")
+        self.settings_db_status_lbl.setToolTip(str(db_path))
         self.settings_db_counts_lbl.setText(f"{sessions_count} сессий  |  {alerts_count} алертов")
 
     # -------- profile --------
@@ -3428,21 +3434,23 @@ IOC совпадения: {s.get('total_ioc_matches') or 0}
             return
 
         html_report = build_html_report(self.engine.current_session, self.engine)
+        default_report_path = reports_dir() / "network_report.html"
         file_path, _ = QFileDialog.getSaveFileName(
             self,
             "Сохранить отчёт",
-            "network_report.html",
+            str(default_report_path),
             "HTML report (*.html)",
         )
         if not file_path:
             return
 
-        with open(file_path, "w", encoding="utf-8") as f:
-            f.write(html_report)
+        report_file = Path(file_path)
+        report_file.parent.mkdir(parents=True, exist_ok=True)
+        report_file.write_text(html_report, encoding="utf-8")
 
         session_id = getattr(self.engine, "current_session_db_id", None) or get_last_session_id()
         if session_id is not None:
-            update_session_report_path(session_id, file_path)
+            update_session_report_path(session_id, str(report_file))
         self.load_sessions()
         QMessageBox.information(self, "Готово", "Отчёт успешно сохранён.")
 

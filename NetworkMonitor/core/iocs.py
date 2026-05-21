@@ -6,6 +6,8 @@ from pathlib import Path
 import ipaddress
 from urllib.parse import urlparse
 
+from NetworkMonitor.core.paths import bundled_iocs_dir
+
 
 def _strip_safe_inline_comment(line: str) -> str:
     for index, char in enumerate(line):
@@ -135,7 +137,7 @@ def match_domain_ioc(domain_value: str, malicious_domains: set[str]) -> IOCMatch
 
 @dataclass
 class IOCStore:
-    base_dir: Path = field(default_factory=lambda: Path(__file__).resolve().parents[1] / "data" / "iocs")
+    base_dir: Path = field(default_factory=bundled_iocs_dir)
     malicious_ips: set[str] = field(default_factory=set)
     malicious_domains: set[str] = field(default_factory=set)
 
