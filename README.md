@@ -1,121 +1,540 @@
-# NetworkMonitor (AI Network Guardian v2.0)
+# NetworkMonitor / AI Network Guardian v2.0
 
-Интеллектуальная система мониторинга сетевого трафика для **оценки уровня информационной безопасности (ИБ)**.  
-Проект реализует прототип **IDS**: анализирует трафик в реальном времени, выявляет подозрительную активность (scan/flood/anomaly) и рассчитывает **IB Score (0–100)**.
+**AI Network Guardian v2.0** — desktop-приложение на Python для мониторинга сетевого трафика, анализа PCAP-файлов, выявления подозрительной активности и оценки уровня информационной безопасности с помощью **IB Score**.
 
----
-
-## Возможности
-
-- **Захват IP-трафика** на Windows через **Scapy + Npcap**
-- **Rule Engine**:
-  - Port Scan (по количеству уникальных портов)
-  - Flood/DoS (по PPS в окне времени, с учетом sampling)
-- **ML Engine (Isolation Forest)**:
-  - Unsupervised anomaly detection
-  - Cold start (обучение на первых `train_size` пакетах)
-  - **Сохранение модели по профилю** (`storage/models/model_<profile>.joblib`)
-- **IB Score (0–100)** + уровень ИБ (Высокий/Средний/Низкий)
-- **GUI на PyQt6**:
-  - живой лог
-  - топ угроз по IP
-  - графики `PPS_eff` и `anom_rate`
-  - окно профилей/настроек
-- **SQLite журнал событий** (`alerts`)
-- **Экспорт отчета**: CSV + summary
+Проект реализует прототип локальной IDS/monitoring-системы. Приложение анализирует сетевой трафик, применяет rule-based detection, ML-анализ аномалий, проверку IOC, сохраняет результаты в SQLite и формирует HTML-отчёты по сессиям анализа.
 
 ---
 
-## Архитектура (кратко)
+## Цель проекта
 
-**Поток данных:**
+Цель проекта — разработать интеллектуальную систему мониторинга, которая помогает оценивать состояние информационной безопасности локальной сети.
 
-Capture (Scapy) → Feature Extraction → Rule Engine + ML Detector → Scoring (IB Score) → SQLite/GUI/Export
+Система предназначена для:
 
-**Ключевые модули:**
-- `NetworkMonitor/core/engine.py` — захват, обработка, правила+ML, скоринг, логирование
-- `NetworkMonitor/core/rules.py` — правила scan/DoS + метрики `pps_eff`
-- `NetworkMonitor/core/ml.py` — Isolation Forest (save/load per profile)
-- `NetworkMonitor/core/scoring.py` — расчет IB Score и рисков
-- `NetworkMonitor/storage/database.py` — SQLite `alerts`
-- `NetworkMonitor/app/main.py` — GUI + графики
-- `NetworkMonitor/app/settings_dialog.py` — управление профилями
-- `NetworkMonitor/app/plot_widget.py` — matplotlib графики (dark theme)
-- `NetworkMonitor/reports/export.py` — экспорт CSV/summary
-- `NetworkMonitor/config/profiles/*.json` — профили (настройки)
+- анализа live network traffic;
+- анализа PCAP-файлов;
+- выявления suspicious activity;
+- обнаружения scan/flood/anomaly-паттернов;
+- проверки IP-адресов и доменов по IOC-спискам;
+- расчёта итогового **IB Score**;
+- хранения истории сессий и алертов;
+- формирования HTML-отчётов для анализа и документации.
+
+Проект ориентирован на учебные, исследовательские и демонстрационные сценарии в области кибербезопасности.
 
 ---
-## Roadmap
 
-### Уже реализовано
-- [x] Захват и базовый анализ сетевого трафика
-- [x] Сохранение данных и событий в SQLite
-- [x] Базовый rule-based анализ сетевой активности
-- [x] Использование ML-подхода для выявления аномалий
-- [x] Базовый графический интерфейс приложения
-- [x] Формирование базовых отчётов по результатам анализа
+## Основные возможности
 
-### v1.1 — Повышение стабильности и качества данных
-- [x] Реализовать единый путь к SQLite, чтобы исключить создание нескольких БД при разных способах запуска
-- [x] Улучшить обработку ошибок при захвате трафика и работе Scapy
-- [x] Добавить режим анализа PCAP-файлов без реального захвата трафика
+### Мониторинг и анализ трафика
 
-### v1.1.1 — IOC и интерпретация угроз
-- [x] Добавить проверку IP-адресов по локальной IOC-базе
-- [x] Добавить проверку доменов из DNS по IOC-спискам
-- [ ] Добавить проверку доменов из HTTP/TLS по IOC-спискам
-- [x] Выявлять предполагаемый заражённый внутренний хост
-- [x] Добавить базовую explainability: почему событие помечено как вредоносное
-- [x] Выводить verdict: anomaly / suspicious / malicious
+- Захват IP-трафика через **Scapy + Npcap**.
+- Анализ live traffic в реальном времени.
+- Offline-анализ PCAP-файлов.
+- Подсчёт пакетов, аномалий, инцидентов и IOC-срабатываний.
+- Отображение live log и событий безопасности в GUI.
 
-### v1.2 — Улучшение оценки уровня информационной безопасности
-- [ ] Выполнить калибровку порогов и нормализации метрик для разных типов сетей
-- [x] Реализовать механизм explainability для пояснения причин снижения IB Score
-- [x] Добавить базовую корреляцию событий с объединением связанных событий в инциденты
+### Rule Engine
 
-### v1.3 — Развитие интерфейса и отчётности
-- [x] Добавить вкладки в GUI: Журнал, Алерты, Отчёты, Настройки
-- [x] HTML отчеты
-- [ ] Реализовать просмотр истории алертов из SQLite с возможностью фильтрации
-- [ ] Улучшить экспорт отчётов: добавить сведения об инцидентах, параметрах профиля, топ IP-адресах и итоговом уровне оценки
+Rule Engine используется для выявления известных паттернов подозрительной сетевой активности.
 
-### v1.4 — Расширение функциональности
-- [ ] Добавить опциональный IPS-режим с возможностью блокировки IP-адресов
-- [ ] Реализовать OSINT enrichment для публичных IP-адресов: геолокация, ASN и репутационные данные
+Реализованные правила:
+
+- Port Scan detection;
+- Flood / DoS detection;
+- подозрительная активность по PPS;
+- выявление IOC match;
+- определение потенциально скомпрометированного внутреннего хоста.
+
+### ML Engine
+
+ML Engine основан на **Isolation Forest**.
+
+Функции ML-модуля:
+
+- unsupervised anomaly detection;
+- cold start training;
+- обучение на первых `train_size` пакетах;
+- сохранение модели по профилю;
+- загрузка модели из `storage/models/`;
+- использование ML-риск компонента в итоговой оценке.
+
+### IOC Detection
+
+Система поддерживает локальные IOC-списки:
+
+- malicious IP addresses;
+- malicious domains.
+
+IOC используются для выявления потенциально вредоносных соединений и доменных запросов.
+
+### IB Score
+
+**IB Score** — интегральная оценка уровня информационной безопасности от `0` до `100`.
+
+Оценка формируется на основе нескольких компонентов:
+
+- network risk;
+- ML risk;
+- IOC risk;
+- host compromise risk;
+- total risk;
+- итоговый уровень угрозы;
+- вероятность инцидента;
+- confidence.
+
+Пример интерпретации:
+
+```text
+80–100  высокий уровень ИБ
+60–79   приемлемый / средний уровень
+0–59    повышенный риск
+```
+
+---
+
+## Интерфейс приложения
+
+GUI реализован на **PyQt6**.
+
+Основные разделы приложения:
+
+### Мониторинг
+
+Главный Dashboard показывает:
+
+- текущий **IB Score**;
+- уровень угрозы;
+- вероятность инцидента;
+- confidence;
+- IOC-срабатывания;
+- suspicious hosts;
+- последние события безопасности;
+- live log;
+- топ угроз по IP;
+- графики метрик в реальном времени.
+
+### PCAP-анализ
+
+Раздел предназначен для offline-анализа `.pcap` файлов.
+
+Функции:
+
+- открытие PCAP-файла;
+- запуск анализа;
+- отображение сводки файла;
+- отображение оценки безопасности;
+- журнал анализа;
+- таблица выявленных событий;
+- экспорт HTML-отчёта.
+
+### Сессии
+
+Раздел показывает историю мониторинга и анализа.
+
+Возможности:
+
+- список сохранённых сессий;
+- поиск по сессиям;
+- просмотр оценки безопасности выбранной сессии;
+- статистика по сессии;
+- сравнение с предыдущей сессией;
+- открытие или формирование HTML-отчёта.
+
+### Алерты
+
+Журнал алертов используется для расследования событий безопасности.
+
+Возможности:
+
+- фильтрация по session, period, type, verdict;
+- поиск по description;
+- таблица алертов;
+- детальная информация по выбранному событию;
+- linked session assessment;
+- оптимизированная загрузка большого количества алертов.
+
+### Настройки
+
+Раздел содержит:
+
+- профили мониторинга;
+- параметры Rule Engine;
+- параметры ML Engine;
+- IOC sources;
+- report settings;
+- database/storage information.
+
+---
+
+## Архитектура
+
+Общий поток обработки данных:
+
+```text
+Scapy / PCAP
+    ↓
+Feature Extraction
+    ↓
+Rule Engine + ML Detector
+    ↓
+Scoring Module / IB Score
+    ↓
+SQLite / GUI / HTML Report
+```
+
+### Ключевые модули
+
+```text
+NetworkMonitor/app/main.py
+```
+
+Главное PyQt6-приложение, GUI, навигация, Dashboard, PCAP, Sessions, Alerts, Settings.
+
+```text
+NetworkMonitor/app/worker.py
+```
+
+Фоновый worker для захвата и анализа трафика.
+
+```text
+NetworkMonitor/app/plot_widget.py
+```
+
+Виджет графиков на matplotlib.
+
+```text
+NetworkMonitor/core/engine.py
+```
+
+Основной движок обработки трафика, правил, ML и логирования.
+
+```text
+NetworkMonitor/core/rules.py
+```
+
+Rule Engine: scan, flood/DoS, PPS-based detection.
+
+```text
+NetworkMonitor/core/ml.py
+```
+
+Isolation Forest, обучение и загрузка ML-моделей.
+
+```text
+NetworkMonitor/core/scoring.py
+```
+
+Расчёт IB Score, total risk и компонентов риска.
+
+```text
+NetworkMonitor/core/report_builder.py
+```
+
+Генерация HTML-отчётов по сессиям и текущему анализу.
+
+```text
+NetworkMonitor/storage/database.py
+```
+
+SQLite-хранилище: alerts, monitoring_sessions, session assessment, history.
+
+```text
+NetworkMonitor/config/profile_manager.py
+```
+
+Управление профилями мониторинга.
+
+```text
+NetworkMonitor/reports/export.py
+```
+
+Legacy CSV/summary export для выгрузки alerts.
+
+---
+
+## Хранение данных
+
+Система использует локальную SQLite-базу данных.
+
+Основные сущности:
+
+- `alerts`;
+- `monitoring_sessions`;
+- session assessment fields;
+- linked alerts;
+- risk components;
+- findings;
+- report path.
+
+Локальная runtime-база не должна храниться в GitHub.
+
+Пример игнорируемых файлов:
+
+```gitignore
+*.db
+*.sqlite
+*.sqlite3
+NetworkMonitor/storage/traffic_data.db
+```
+
+---
+
+## HTML-отчёты
+
+Система формирует HTML-отчёт по сессии мониторинга или PCAP-анализу.
+
+Отчёт включает:
+
+- общую информацию о сессии;
+- режим анализа;
+- источник трафика;
+- профиль мониторинга;
+- итоговый IB Score;
+- уровень угрозы;
+- вероятность инцидента;
+- confidence;
+- total risk;
+- состав оценки;
+- ключевые выводы;
+- статистику;
+- связанные алерты;
+- топ типов алертов;
+- топ подозрительных значений;
+- рекомендации;
+- сравнение с предыдущей сессией.
+
+HTML-отчёт оформлен в светлом enterprise/SOC-стиле и может использоваться как артефакт для документации или защиты проекта.
+
+---
+
 ## Установка
 
-### 1) Требования
-- Windows 10/11
-- Python 3.x
-- **Npcap** (обязательно для sniff на Windows)
+### Требования
 
-### 2) Установка проекта
+- Windows 10/11;
+- Python 3.x;
+- Npcap;
+- Git;
+- virtual environment.
+
+Для live traffic monitoring на Windows требуется установленный **Npcap**.
+
+### Клонирование проекта
+
 ```powershell
 git clone https://github.com/Abyl015/NetworkMonitor.git
 cd NetworkMonitor
+```
+
+### Создание виртуального окружения
+
+```powershell
 py -m venv .venv
 .\.venv\Scripts\activate
+```
+
+### Установка зависимостей
+
+```powershell
 pip install -U pip
 pip install -r requirements.txt
 ```
 
-## AbuseIPDB enrichment (optional)
+---
 
-AbuseIPDB enrichment is optional and used only as external context for public IP addresses.
-It does not replace local IOC detection and does not affect IB Score.
+## Запуск
 
-Set the API key in PowerShell before launching the app:
+Из корня проекта:
 
 ```powershell
-$env:ABUSEIPDB_API_KEY="your_api_key"
+python NetworkMonitor\app\main.py
 ```
 
-Private/internal IP addresses are not sent to AbuseIPDB. Do not commit API keys to the repository.
+Если используется другой Python launcher:
 
-## API Keys / Threat Intelligence
+```powershell
+py NetworkMonitor\app\main.py
+```
 
-AbuseIPDB can be configured either through the Settings screen or with the `ABUSEIPDB_API_KEY` environment variable.
-Local secrets are stored only in `NetworkMonitor/config/secrets.local.json`; this file is ignored by Git and must not be committed.
+---
 
-Private/internal IP addresses are not sent to AbuseIPDB. Enrichment is context only and does not affect IB Score.
-VirusTotal, AlienVault OTX, GreyNoise, and Shodan are planned future providers.
+## Использование
+
+### Live monitoring
+
+1. Запустить приложение.
+2. Открыть вкладку `Мониторинг`.
+3. Выбрать сетевой интерфейс.
+4. Нажать `Старт`.
+5. Наблюдать за live log, events, IB Score и метриками.
+6. Нажать `Стоп` для завершения сессии.
+7. Сформировать HTML-отчёт при необходимости.
+
+### PCAP-анализ
+
+1. Открыть вкладку `PCAP-анализ`.
+2. Нажать `Открыть PCAP`.
+3. Выбрать `.pcap` файл.
+4. Нажать `Анализ`.
+5. Дождаться завершения обработки.
+6. Просмотреть оценку, лог и события.
+7. Нажать `Экспорт отчёта`.
+
+### Работа с алертами
+
+1. Открыть вкладку `Алерты`.
+2. Использовать фильтры по сессии, периоду, типу и verdict.
+3. Выбрать алерт в таблице.
+4. Посмотреть детали события.
+5. Проверить связанную оценку сессии.
+
+### Работа с сессиями
+
+1. Открыть вкладку `Сессии`.
+2. Выбрать сохранённую сессию.
+3. Просмотреть IB Score, explanation, statistics и comparison.
+4. Нажать `Отчёт` для открытия или формирования HTML-отчёта.
+
+---
+
+## Roadmap
+
+### v1.0 — Базовый прототип IDS
+
+- [x] Захват и базовый анализ сетевого трафика
+- [x] Rule-based detection для scan/flood-паттернов
+- [x] ML anomaly detection на Isolation Forest
+- [x] Базовый IB Score
+- [x] SQLite-журнал alerts
+- [x] Базовый PyQt6 GUI
+
+### v1.1 — Стабильность и PCAP-анализ
+
+- [x] Реализовать единый путь к SQLite
+- [x] Улучшить обработку ошибок Scapy/Npcap
+- [x] Добавить режим offline-анализа PCAP-файлов
+- [x] Добавить сохранение ML-моделей по профилям
+
+### v1.2 — IOC и интерпретация угроз
+
+- [x] Добавить проверку IP-адресов по локальной IOC-базе
+- [x] Добавить проверку DNS-доменов по IOC-спискам
+- [x] Выявлять предполагаемый заражённый внутренний хост
+- [x] Добавить explainability для сработавших правил и причин снижения IB Score
+- [x] Выводить verdict: anomaly / suspicious / malicious
+
+### v1.3 — GUI, Sessions, Alerts и отчётность
+
+- [x] Добавить Dashboard с IB Score
+- [x] Добавить PCAP Analysis screen
+- [x] Добавить Sessions history
+- [x] Добавить Alerts journal с фильтрами
+- [x] Добавить linked session assessment
+- [x] Добавить HTML-отчёты по сессиям
+- [x] Улучшить sidebar navigation с SVG-иконками
+- [x] Русифицировать интерфейс с сохранением технических терминов
+- [x] Оптимизировать загрузку большого количества alerts
+
+### v2.0 — Текущая версия
+
+- [x] Live traffic monitoring через Scapy + Npcap
+- [x] Offline PCAP analysis
+- [x] Rule Engine для scan/flood/anomaly-паттернов
+- [x] ML Engine на Isolation Forest
+- [x] IOC-проверка IP-адресов
+- [x] IOC-проверка DNS-доменов
+- [x] Выявление потенциально скомпрометированного хоста
+- [x] Расчёт IB Score
+- [x] SQLite-хранилище alerts и monitoring sessions
+- [x] Dashboard с оценкой безопасности
+- [x] PCAP Analysis screen
+- [x] Sessions history
+- [x] Alerts journal with filters
+- [x] Linked session assessment
+- [x] HTML security assessment report
+- [x] Sidebar navigation with SVG icons
+- [x] Русификация интерфейса с сохранением технических терминов
+
+### v2.1 — Стабильность и производительность
+
+- [x] Оптимизировать загрузку большого количества alerts
+- [x] Добавить batching части UI-обновлений во время PCAP-анализа
+- [ ] Оптимизировать обработку крупных PCAP-файлов
+- [ ] Добавить progress bar для PCAP-анализа
+- [ ] Вынести тяжёлые вычисления в отдельный процесс
+- [ ] Улучшить throttling логов и графиков при больших объёмах данных
+- [ ] Добавить более подробные empty-state сообщения
+
+### v2.2 — Улучшение detection logic
+
+- [ ] Добавить проверку доменов из HTTP/TLS по IOC-спискам
+- [ ] Расширить IOC enrichment для публичных IP
+- [ ] Добавить ASN, geolocation и reputation context
+- [ ] Улучшить корреляцию событий в инциденты
+- [ ] Выполнить калибровку IB Score для разных типов сетей
+- [ ] Добавить расширенную explainability по каждому risk component
+
+### v2.3 — Отчётность и аналитика
+
+- [x] HTML-отчёт по сессии
+- [x] Risk breakdown в отчёте
+- [x] Recommendations в отчёте
+- [x] Сравнение с предыдущей сессией
+- [ ] Добавить топ IP-адресов в HTML-отчёт
+- [ ] Добавить экспорт отчёта в PDF
+- [ ] Добавить графики в HTML-отчёт
+- [ ] Добавить расширенный incident timeline
+
+### v3.0 — Возможное развитие в web/SOC platform
+
+- [ ] Выделить backend на FastAPI
+- [ ] Создать web dashboard
+- [ ] Добавить PostgreSQL support
+- [ ] Реализовать multi-user mode
+- [ ] Добавить интеграции с SIEM/Wazuh/Splunk
+- [ ] Добавить REST API для внешних систем
+- [ ] Реализовать agent-based architecture для удалённых хостов
+
+---
+
+## Ограничения текущей версии
+
+Текущая версия является desktop-прототипом локальной системы мониторинга.
+
+Известные ограничения:
+
+- анализ крупных PCAP-файлов может создавать повышенную нагрузку на интерфейс;
+- точность IB Score зависит от выбранного профиля, IOC-списков и калибровки порогов;
+- ML-модель требует достаточного объёма нормального трафика для более стабильного baseline;
+- проект ориентирован на detection/assessment, а не на автоматическую блокировку атак;
+- IPS-режим и активное реагирование пока не реализованы.
+
+Эти ограничения вынесены в Roadmap и рассматриваются как направления дальнейшего развития.
+
+---
+
+## Статус проекта
+
+Проект находится в стадии рабочего прототипа.
+
+Текущая версия включает основные компоненты:
+
+- traffic capture;
+- PCAP analysis;
+- Rule Engine;
+- ML anomaly detection;
+- IOC detection;
+- IB Score;
+- SQLite history;
+- Dashboard;
+- Sessions;
+- Alerts;
+- Settings;
+- HTML reports.
+
+Проект может использоваться для демонстрации подхода к интеллектуальному мониторингу сетевой безопасности и оценки уровня ИБ.
+
+---
+
