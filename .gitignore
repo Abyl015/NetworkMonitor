@@ -24,6 +24,7 @@ NetworkMonitor/storage/traffic_data.db
 reports/
 exports/
 *.html
+*.pdf
 *.csv
 
 # Local design notes

@@ -461,15 +461,21 @@ py NetworkMonitor\app\main.py
 
 - [x] Оптимизировать загрузку большого количества alerts
 - [x] Добавить batching части UI-обновлений во время PCAP-анализа
+- [x] Улучшить throttling логов и графиков при больших объёмах данных
+- [x] Разделить Dashboard live monitoring и PCAP offline analysis
+- [x] Добавить кроссплатформенные runtime paths для Windows/macOS/Linux
 - [ ] Оптимизировать обработку крупных PCAP-файлов
 - [ ] Добавить progress bar для PCAP-анализа
 - [ ] Вынести тяжёлые вычисления в отдельный процесс
-- [ ] Улучшить throttling логов и графиков при больших объёмах данных
 - [ ] Добавить более подробные empty-state сообщения
 
 ### v2.2 — Улучшение detection logic
 
-- [ ] Добавить проверку доменов из HTTP/TLS по IOC-спискам
+- [x] Усилить локальную IOC-обработку: комментарии, нормализация, безопасный subdomain matching
+- [x] Добавить AbuseIPDB enrichment для публичных IP-адресов
+- [x] Добавить API Keys / Threat Intelligence настройки
+- [x] Добавить защиту от отправки private/internal IP во внешние API
+- [x] Использовать существующие DNS/HTTP/TLS доменные кандидаты для IOC matching
 - [ ] Расширить IOC enrichment для публичных IP
 - [ ] Добавить ASN, geolocation и reputation context
 - [ ] Улучшить корреляцию событий в инциденты
@@ -479,12 +485,20 @@ py NetworkMonitor\app\main.py
 ### v2.3 — Отчётность и аналитика
 
 - [x] HTML-отчёт по сессии
+- [x] PDF-экспорт отчёта
+- [x] Выбор формата отчёта: HTML / PDF
 - [x] Risk breakdown в отчёте
 - [x] Recommendations в отчёте
 - [x] Сравнение с предыдущей сессией
-- [ ] Добавить топ IP-адресов в HTML-отчёт
-- [ ] Добавить экспорт отчёта в PDF
-- [ ] Добавить графики в HTML-отчёт
+- [x] Analyst Assessment в отчёте
+- [x] Privacy Note в отчёте
+- [x] Detection Limitations в отчёте
+- [x] Раздел “Аналитика” за период
+- [x] Средний, минимальный и максимальный IB Score за период
+- [x] Графики динамики IB Score и событий за период
+- [x] Triage-контекст в Alerts
+- [ ] Добавить топ IP-адресов в HTML/PDF-отчёт
+- [ ] Добавить графики в HTML/PDF-отчёт
 - [ ] Добавить расширенный incident timeline
 
 ### v3.0 — Возможное развитие в web/SOC platform

@@ -34,6 +34,7 @@ from PyQt6.QtWidgets import (
     QDateTimeEdit,
     QLineEdit,
     QListWidget,
+    QProgressBar,
     QScrollArea,
     QSplitter,
     QSizePolicy, QListWidgetItem, QTableWidget, QTableWidgetItem,
@@ -47,7 +48,14 @@ from NetworkMonitor.config.secrets import delete_secret, has_local_secret, has_s
 from NetworkMonitor.core.engine import NetworkEngine
 from NetworkMonitor.core.enrichment import is_public_ip
 from NetworkMonitor.core.paths import assets_dir, database_path, icons_dir, reports_dir
-from NetworkMonitor.core.report_builder import build_html_report, build_html_report_for_session
+from NetworkMonitor.core.pdf_report import write_pdf_report
+from NetworkMonitor.core.report_builder import (
+    build_html_report,
+    build_html_report_for_session,
+    build_pdf_report_html_from_data,
+    build_report_data,
+    build_report_data_for_session,
+)
 from NetworkMonitor.storage.database import (
     count_alerts_for_period,
     get_analytics_sessions,
@@ -125,6 +133,9 @@ class MainWindow(QMainWindow):
         self._force_graph_refresh = False
         self._last_pcap_stats_snapshot: tuple | None = None
         self._pcap_recent_conversations: list[str] = []
+        self._pcap_analysis_completed = False
+        self._pcap_analysis_failed = False
+        self._pcap_processed_packets = 0
 
         init_db()
         self._build_ui()
@@ -707,6 +718,25 @@ class MainWindow(QMainWindow):
             summary_grid.addWidget(value_label, 1, col)
             summary_grid.setColumnStretch(col, 1)
         summary_layout.addLayout(summary_grid)
+
+        progress_row = QHBoxLayout()
+        progress_row.setContentsMargins(0, 4, 0, 0)
+        progress_row.setSpacing(10)
+        self.pcap_progress_status_label = QLabel("PCAP файл не выбран")
+        self.pcap_progress_status_label.setObjectName("pcap_field_value")
+        self.pcap_progress_status_label.setMinimumWidth(180)
+        self.pcap_progress_bar = QProgressBar()
+        self.pcap_progress_bar.setRange(0, 100)
+        self.pcap_progress_bar.setValue(0)
+        self.pcap_progress_bar.setTextVisible(False)
+        self.pcap_progress_bar.setEnabled(False)
+        self.pcap_progress_packets_label = QLabel("Обработано: 0")
+        self.pcap_progress_packets_label.setObjectName("pcap_field_value")
+        self.pcap_progress_packets_label.setMinimumWidth(130)
+        progress_row.addWidget(self.pcap_progress_status_label, 0)
+        progress_row.addWidget(self.pcap_progress_bar, 1)
+        progress_row.addWidget(self.pcap_progress_packets_label, 0)
+        summary_layout.addLayout(progress_row)
         layout.addWidget(summary_card)
 
         assessment_card = QFrame()
@@ -2052,6 +2082,94 @@ class MainWindow(QMainWindow):
         if hasattr(self, "pcap_state_label"):
             self.pcap_state_label.setText(f"Состояние: {text}")
 
+    def _set_pcap_progress_idle(self) -> None:
+        self._pcap_analysis_completed = False
+        self._pcap_analysis_failed = False
+        self._pcap_processed_packets = 0
+        status = "PCAP файл загружен" if self.last_pcap_path else "PCAP файл не выбран"
+        if hasattr(self, "pcap_progress_status_label"):
+            self.pcap_progress_status_label.setText(status)
+        if hasattr(self, "pcap_progress_packets_label"):
+            self.pcap_progress_packets_label.setText("Обработано: 0")
+        if hasattr(self, "pcap_progress_bar"):
+            self.pcap_progress_bar.setRange(0, 100)
+            self.pcap_progress_bar.setValue(0)
+            self.pcap_progress_bar.setEnabled(False)
+
+    def _set_pcap_progress_running(self, processed: int | None = None) -> None:
+        if processed is not None:
+            self._pcap_processed_packets = max(0, int(processed))
+        if hasattr(self, "pcap_progress_status_label"):
+            self.pcap_progress_status_label.setText("Анализ выполняется...")
+        if hasattr(self, "pcap_progress_packets_label"):
+            self.pcap_progress_packets_label.setText(f"Обработано: {self._pcap_processed_packets:,}")
+        if hasattr(self, "pcap_progress_bar"):
+            self.pcap_progress_bar.setEnabled(True)
+            self.pcap_progress_bar.setRange(0, 0)
+
+    def _set_pcap_progress_finished(self, processed: int | None = None) -> None:
+        if processed is not None:
+            self._pcap_processed_packets = max(0, int(processed))
+        self._pcap_analysis_completed = True
+        self._pcap_analysis_failed = False
+        if hasattr(self, "pcap_progress_status_label"):
+            self.pcap_progress_status_label.setText("Анализ завершён")
+        if hasattr(self, "pcap_progress_packets_label"):
+            self.pcap_progress_packets_label.setText(f"Обработано: {self._pcap_processed_packets:,}")
+        if hasattr(self, "pcap_progress_bar"):
+            self.pcap_progress_bar.setEnabled(True)
+            self.pcap_progress_bar.setRange(0, 100)
+            self.pcap_progress_bar.setValue(0)
+            self.pcap_progress_bar.setValue(100)
+
+    def _set_pcap_progress_failed(self) -> None:
+        self._pcap_analysis_failed = True
+        if hasattr(self, "pcap_progress_status_label"):
+            self.pcap_progress_status_label.setText("Анализ остановлен или завершился с ошибкой")
+        if hasattr(self, "pcap_progress_packets_label"):
+            self.pcap_progress_packets_label.setText(f"Обработано: {self._pcap_processed_packets:,}")
+        if hasattr(self, "pcap_progress_bar"):
+            self.pcap_progress_bar.setEnabled(True)
+            self.pcap_progress_bar.setRange(0, 100)
+
+    def _parse_pcap_progress_message(self, msg: str) -> int | None:
+        plain = self._plain_log(msg)
+        match = re.search(r"Обработано пакетов:\s*([0-9][0-9\s,]*)", plain)
+        if not match:
+            return None
+        value = re.sub(r"[^\d]", "", match.group(1))
+        return int(value) if value else None
+
+    def _update_pcap_progress_from_messages(self, messages: list[str]) -> None:
+        if not messages:
+            return
+
+        latest_processed = None
+        completed = False
+        failed = False
+
+        for msg in messages:
+            plain = self._plain_log(msg)
+            processed = self._parse_pcap_progress_message(msg)
+            if processed is not None:
+                latest_processed = processed
+            if "[PCAP]" in plain and "Анализ заверш" in plain:
+                completed = True
+                total_match = re.search(r"Всего пакетов:\s*([0-9][0-9\s,]*)", plain)
+                if total_match:
+                    value = re.sub(r"[^\d]", "", total_match.group(1))
+                    if value:
+                        latest_processed = int(value)
+            elif "[PCAP ERROR]" in plain or "остановлен пользователем" in plain.lower():
+                failed = True
+
+        if completed:
+            self._set_pcap_progress_finished(latest_processed)
+        elif failed and not self._pcap_analysis_completed:
+            self._set_pcap_progress_failed()
+        elif latest_processed is not None and not self._pcap_analysis_completed:
+            self._set_pcap_progress_running(latest_processed)
+
     def _update_pcap_file_summary(self, file_path: str | None = None) -> None:
         if not hasattr(self, "pcap_file_name_label"):
             return
@@ -2196,6 +2314,7 @@ class MainWindow(QMainWindow):
             self.pcap_enrichment_status_label.setText(
                 "Threat Intelligence enrichment используется как внешний контекст и не изменяет IB Score."
             )
+        self._set_pcap_progress_idle()
         self._set_pcap_state("PCAP файл не выбран")
 
     def _extract_ips_from_text(self, text: str) -> list[str]:
@@ -3351,6 +3470,40 @@ IOC совпадения: {s.get('total_ioc_matches') or 0}
 """
         self.session_details.setText(text)
 
+    def _report_format_from_dialog(self, file_path: str, selected_filter: str) -> str:
+        suffix = Path(file_path).suffix.lower()
+        if suffix == ".pdf":
+            return "pdf"
+        if suffix in (".html", ".htm"):
+            return "html"
+        return "pdf" if "pdf" in (selected_filter or "").lower() else "html"
+
+    def _normalized_report_path(self, file_path: str, report_format: str) -> Path:
+        report_file = Path(file_path)
+        if report_file.suffix:
+            return report_file
+        return report_file.with_suffix(".pdf" if report_format == "pdf" else ".html")
+
+    def _write_session_report_file(self, session_id: int, report_file: Path, report_format: str) -> None:
+        report_file.parent.mkdir(parents=True, exist_ok=True)
+        if report_format == "pdf":
+            report_data = build_report_data_for_session(session_id)
+            write_pdf_report(build_pdf_report_html_from_data(report_data), report_file)
+            return
+
+        html_report = build_html_report_for_session(session_id)
+        report_file.write_text(html_report, encoding="utf-8")
+
+    def _write_runtime_report_file(self, report_file: Path, report_format: str) -> None:
+        report_file.parent.mkdir(parents=True, exist_ok=True)
+        if report_format == "pdf":
+            report_data = build_report_data(self.engine.current_session, self.engine)
+            write_pdf_report(build_pdf_report_html_from_data(report_data), report_file)
+            return
+
+        html_report = build_html_report(self.engine.current_session, self.engine)
+        report_file.write_text(html_report, encoding="utf-8")
+
     def open_selected_session_report(self):
         item = self.sessions_list.currentItem()
         if not item:
@@ -3373,20 +3526,19 @@ IOC совпадения: {s.get('total_ioc_matches') or 0}
             return
 
         default_report_path = reports_dir() / f"network_session_{session_id}_report.html"
-        file_path, _ = QFileDialog.getSaveFileName(
+        file_path, selected_filter = QFileDialog.getSaveFileName(
             self,
-            "Сохранить HTML-отчёт по сессии",
+            "Сохранить отчёт по сессии",
             str(default_report_path),
-            "HTML report (*.html)",
+            "HTML report (*.html);;PDF report (*.pdf)",
         )
         if not file_path:
             return
 
         try:
-            html_report = build_html_report_for_session(session_id)
-            report_file = Path(file_path)
-            report_file.parent.mkdir(parents=True, exist_ok=True)
-            report_file.write_text(html_report, encoding="utf-8")
+            report_format = self._report_format_from_dialog(file_path, selected_filter)
+            report_file = self._normalized_report_path(file_path, report_format)
+            self._write_session_report_file(session_id, report_file, report_format)
             update_session_report_path(session_id, str(report_file))
             self.load_sessions()
             for row in range(self.sessions_list.count()):
@@ -3395,13 +3547,13 @@ IOC совпадения: {s.get('total_ioc_matches') or 0}
                     self.sessions_list.setCurrentItem(refreshed_item)
                     self.show_session_details(refreshed_item)
                     break
-            QMessageBox.information(self, "Готово", "HTML-отчёт по выбранной сессии сформирован.")
+            QMessageBox.information(self, "Готово", "Отчёт по выбранной сессии сформирован.")
             webbrowser.open(report_file.resolve().as_uri())
         except Exception as e:
             QMessageBox.warning(
                 self,
                 "Ошибка отчёта",
-                f"Не удалось сформировать HTML-отчёт:\n{type(e).__name__}: {e}",
+                f"Не удалось сформировать отчёт:\n{type(e).__name__}: {e}",
             )
 
     def refresh_settings_profile_page(self) -> None:
@@ -3517,12 +3669,16 @@ IOC совпадения: {s.get('total_ioc_matches') or 0}
 
     def on_worker_message(self, msg: str) -> None:
         mode = getattr(self, "_active_worker_mode", getattr(self, "current_mode", "live"))
+        if mode == "pcap":
+            self._update_pcap_progress_from_messages([msg])
         self._queue_worker_log(msg, mode)
         if mode != "pcap" and time.monotonic() - self._last_live_ui_flush >= 0.5:
             self.flush_live_ui_updates()
 
     def on_worker_messages(self, messages: list[str]) -> None:
         mode = getattr(self, "_active_worker_mode", getattr(self, "current_mode", "live"))
+        if mode == "pcap":
+            self._update_pcap_progress_from_messages(messages)
         self._queue_worker_logs(messages, mode)
         if mode != "pcap" and time.monotonic() - self._last_live_ui_flush >= 0.5:
             self.flush_live_ui_updates()
@@ -3552,6 +3708,10 @@ IOC совпадения: {s.get('total_ioc_matches') or 0}
         self.set_status_text("Статус: ожидание запуска")
         if finished_mode == "pcap":
             self._refresh_pcap_from_engine(force=True)
+            if self._pcap_analysis_completed:
+                self._set_pcap_progress_finished()
+            else:
+                self._set_pcap_progress_failed()
             self._append_pcap_log("<b style='color:#2563eb;'>[SYSTEM] PCAP-анализ остановлен.</b>")
         else:
             self.update_assessment_panel()
@@ -3577,6 +3737,7 @@ IOC совпадения: {s.get('total_ioc_matches') or 0}
         self.clear_pcap_view()
         self._update_pcap_file_summary(file_path)
         self._set_pcap_state("PCAP файл загружен")
+        self._set_pcap_progress_idle()
         self.is_monitoring = True
         self.current_mode = "pcap"
 
@@ -3589,6 +3750,7 @@ IOC совпадения: {s.get('total_ioc_matches') or 0}
         self.settings_page_btn.setEnabled(False)
 
         self.set_status_text("Статус: Анализ выполняется...")
+        self._set_pcap_progress_running(0)
         self._append_pcap_log(f"<b style='color:#2563eb;'>[SYSTEM] PCAP файл загружен: {file_path}</b>")
         self._append_pcap_log(f"<b style='color:#2563eb;'>[SYSTEM] Анализ выполняется...</b>")
         self.start_worker(mode="pcap", pcap_path=file_path)
@@ -3671,20 +3833,19 @@ IOC совпадения: {s.get('total_ioc_matches') or 0}
             QMessageBox.warning(self, "Мониторинг активен", "Сначала остановите мониторинг, затем экспортируйте отчёт.")
             return
 
-        html_report = build_html_report(self.engine.current_session, self.engine)
         default_report_path = reports_dir() / "network_report.html"
-        file_path, _ = QFileDialog.getSaveFileName(
+        file_path, selected_filter = QFileDialog.getSaveFileName(
             self,
             "Сохранить отчёт",
             str(default_report_path),
-            "HTML report (*.html)",
+            "HTML report (*.html);;PDF report (*.pdf)",
         )
         if not file_path:
             return
 
-        report_file = Path(file_path)
-        report_file.parent.mkdir(parents=True, exist_ok=True)
-        report_file.write_text(html_report, encoding="utf-8")
+        report_format = self._report_format_from_dialog(file_path, selected_filter)
+        report_file = self._normalized_report_path(file_path, report_format)
+        self._write_runtime_report_file(report_file, report_format)
 
         session_id = getattr(self.engine, "current_session_db_id", None) or get_last_session_id()
         if session_id is not None:

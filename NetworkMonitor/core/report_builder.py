@@ -517,6 +517,227 @@ def _risk_component_label(name: Any) -> str:
     return labels.get(str(name), str(name))
 
 
+def _render_pdf_kv(rows: list[tuple[str, Any]]) -> str:
+    return (
+        '<table class="kv-table">'
+        + "".join(f"<tr><th>{_safe(key)}</th><td>{_safe(value)}</td></tr>" for key, value in rows)
+        + "</table>"
+    )
+
+
+def _render_pdf_list(items: list[Any], empty: str) -> str:
+    if not items:
+        return f"<p>{_safe(empty)}</p>"
+    return "<ul>" + "".join(f"<li>{_safe(item)}</li>" for item in items) + "</ul>"
+
+
+def _render_pdf_section(title: str, body: str) -> str:
+    return f"""
+    <h2>{_safe(title)}</h2>
+    {body}
+    """
+
+
+def _render_pdf_threat_intelligence(data: dict[str, Any]) -> str:
+    rows = _threat_intel_rows(data)
+    if not rows:
+        return _render_pdf_section(
+            "Threat Intelligence Enrichment",
+            "<p>"
+            + _safe("Данные Threat Intelligence enrichment недоступны. Отчёт не выполняет внешние API-запросы автоматически.")
+            + "</p>",
+        )
+
+    table_rows = "".join(
+        "<tr>"
+        f"<td>{_safe(row.get('ip'))}</td>"
+        f"<td>{_safe(row.get('status'))}</td>"
+        f"<td>{_safe(row.get('abuse_score'))}</td>"
+        f"<td>{_safe(row.get('total_reports'))}</td>"
+        f"<td>{_safe(row.get('country'))}</td>"
+        f"<td>{_safe(row.get('isp_usage'))}</td>"
+        f"<td>{_safe(row.get('last_reported'))}</td>"
+        "</tr>"
+        for row in rows
+    )
+    return _render_pdf_section(
+        "Threat Intelligence Enrichment",
+        "<table><tr><th>IP</th><th>Status</th><th>Abuse score</th><th>Total reports</th>"
+        "<th>Country</th><th>ISP / usage</th><th>Last reported</th></tr>"
+        f"{table_rows}</table>",
+    )
+
+
+def _render_pdf_privacy_note() -> str:
+    return _render_pdf_section(
+        "Примечание о конфиденциальности",
+        "<p>"
+        + _safe("Внешнее обогащение выполняется только для публичных IP-адресов и используется как дополнительный аналитический контекст. Внутренние/private IP-адреса, API-ключи, локальные имена хостов и чувствительные параметры не должны включаться в отчёт или отправляться во внешние сервисы.")
+        + "</p><p>"
+        + _safe("Отчёт формируется из локальных результатов анализа и сохранённых данных сессии. Внешняя репутационная информация, если она присутствует, не является доказательством сама по себе.")
+        + "</p>",
+    )
+
+
+def _render_pdf_detection_limitations() -> str:
+    return _render_pdf_section(
+        "Ограничения обнаружения",
+        "<p>"
+        + _safe("Результаты анализа следует рассматривать как индикаторы риска. ML-аномалии, IOC-срабатывания и внешняя репутационная информация требуют дополнительной проверки аналитиком. Система не выполняет автоматическую блокировку и не должна использоваться как единственный источник решения об инциденте.")
+        + "</p>"
+        + _render_pdf_list([
+            "IB Score является индикатором оценки риска, а не финальным forensic-заключением.",
+            "ML-аномалии могут включать ложные срабатывания и редкое легитимное поведение.",
+            "IOC-срабатывания могут быть устаревшими или относиться к shared/CDN/cloud инфраструктуре.",
+            "Threat Intelligence enrichment не доказывает вредоносность само по себе.",
+            "Перед containment/blocking требуется ручная аналитическая проверка.",
+        ], "Нет данных"),
+    )
+
+
+def build_pdf_report_html_from_data(data: dict[str, Any]) -> str:
+    assessment = data["assessment"]
+    stats = data["stats"]
+    alerts = data["alerts"]
+    top_types = data["top_alert_types"]
+    recommendations = _recommendations(
+        assessment.get("score"),
+        assessment.get("findings", []),
+        assessment.get("summary"),
+        top_types,
+    )
+    component_rows = [
+        (_risk_component_label(name), value)
+        for name, value in (assessment.get("components") or {}).items()
+    ]
+    alert_rows = "".join(
+        "<tr>"
+        f"<td>{_safe(alert.get('id'))}</td>"
+        f"<td>{_safe(alert.get('timestamp'))}</td>"
+        f"<td>{_safe(alert.get('alert_type'))}</td>"
+        f"<td>{_safe(alert.get('description'))}</td>"
+        "</tr>"
+        for alert in alerts
+    )
+    if not alert_rows:
+        empty_alerts = "Для этой сессии отдельные записи alerts не найдены."
+        if _has_activity_without_linked_alerts(stats, alerts):
+            empty_alerts = (
+                "Для этой сессии отдельные записи alerts не найдены. Возможная причина: события были "
+                "учтены в агрегированной статистике, но не были связаны с session_id."
+            )
+        alert_rows = f'<tr><td colspan="4">{_safe(empty_alerts)}</td></tr>'
+
+    return f"""<!doctype html>
+<html lang="ru">
+<head>
+    <meta charset="utf-8">
+    <style>
+        body {{
+            font-family: sans-serif;
+            font-size: 10.5pt;
+            color: #172033;
+            line-height: 1.35;
+        }}
+        h1 {{
+            font-size: 20pt;
+            color: #0f172a;
+            margin: 0 0 8pt;
+        }}
+        h2 {{
+            font-size: 14pt;
+            color: #1d4ed8;
+            margin: 16pt 0 7pt;
+            border-bottom: 1px solid #cbd5e1;
+            padding-bottom: 3pt;
+        }}
+        h3 {{
+            font-size: 11.5pt;
+            color: #334155;
+            margin: 10pt 0 5pt;
+        }}
+        p {{ margin: 4pt 0 8pt; }}
+        table {{
+            width: 100%;
+            border-collapse: collapse;
+            margin: 4pt 0 10pt;
+        }}
+        th, td {{
+            border: 1px solid #dbe3ea;
+            padding: 5pt 6pt;
+            vertical-align: top;
+        }}
+        th {{
+            background: #f1f5f9;
+            font-weight: bold;
+            text-align: left;
+        }}
+        .kv-table th {{ width: 34%; }}
+        .score {{
+            font-size: 24pt;
+            font-weight: bold;
+            color: #1d4ed8;
+        }}
+        .muted {{ color: #64748b; }}
+        ul {{ margin-top: 4pt; }}
+    </style>
+</head>
+<body>
+    <h1>Отчёт по оценке кибербезопасности</h1>
+    <p class="muted">Сформирован: {_safe(data.get("generated_at"))}</p>
+
+    {_render_pdf_section("Информация о сессии", _render_pdf_kv([
+        ("Session ID", data.get("session_id")),
+        ("Время запуска", data.get("started_at")),
+        ("Время завершения", data.get("stopped_at")),
+        ("Длительность", data.get("duration")),
+        ("Режим", data.get("mode")),
+        ("Источник", data.get("source")),
+        ("Профиль", data.get("profile")),
+    ]))}
+
+    {_render_pdf_section("IB Score", f'''
+        <p class="score">{_safe(assessment.get("score"), "Не рассчитано")}</p>
+        {_render_pdf_kv([
+            ("Уровень ИБ", assessment.get("level")),
+            ("Уровень угрозы", assessment.get("threat_level")),
+            ("Вероятность инцидента", assessment.get("incident_probability")),
+            ("Достоверность", assessment.get("confidence")),
+            ("Итоговый риск", assessment.get("total_risk")),
+            ("Вывод", assessment.get("summary")),
+        ])}
+    ''')}
+
+    {_render_pdf_section("Аналитическая оценка", _render_pdf_kv(_build_analyst_assessment(data)))}
+
+    {_render_pdf_section("Статистика", _render_pdf_kv([
+        ("Пакеты", stats.get("packets")),
+        ("Аномалии", stats.get("anomalies")),
+        ("Инциденты", stats.get("incidents")),
+        ("IOC совпадения", stats.get("ioc_matches")),
+    ]))}
+
+    {_render_pdf_section("Алерты", (
+        "<table><tr><th>ID</th><th>Время</th><th>Тип</th><th>Описание</th></tr>"
+        f"{alert_rows}</table>"
+    ))}
+
+    {_render_pdf_section("Состав оценки / risk breakdown", (
+        _render_pdf_kv(component_rows) if component_rows else "<p>Не сохранено</p>"
+    ))}
+
+    {_render_pdf_section("Ключевые выводы", _render_pdf_list(assessment.get("findings", []), "Не сохранено"))}
+
+    {_render_pdf_threat_intelligence(data)}
+    {_render_pdf_privacy_note()}
+    {_render_pdf_detection_limitations()}
+
+    {_render_pdf_section("Рекомендации", _render_pdf_list(recommendations, "Не рассчитано"))}
+</body>
+</html>
+"""
+
+
 def _render_report(data: dict[str, Any]) -> str:
     assessment = data["assessment"]
     stats = data["stats"]
@@ -759,9 +980,17 @@ def _render_report(data: dict[str, Any]) -> str:
 """
 
 
+def build_report_data_for_session(session_id: int) -> dict[str, Any]:
+    return _session_data_from_db(int(session_id))
+
+
+def build_report_data(session: Any, engine: Any) -> dict[str, Any]:
+    return _session_data_from_runtime(session, engine)
+
+
 def build_html_report_for_session(session_id: int) -> str:
-    return _render_report(_session_data_from_db(int(session_id)))
+    return _render_report(build_report_data_for_session(int(session_id)))
 
 
 def build_html_report(session: Any, engine: Any) -> str:
-    return _render_report(_session_data_from_runtime(session, engine))
+    return _render_report(build_report_data(session, engine))
