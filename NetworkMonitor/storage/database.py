@@ -257,6 +257,32 @@ def get_sessions(limit=50):
         return cursor.fetchall()
 
 
+def get_analytics_sessions(started_from=None):
+    query = "SELECT * FROM monitoring_sessions"
+    params = []
+    if started_from:
+        query += " WHERE started_at >= ?"
+        params.append(started_from)
+    query += " ORDER BY started_at ASC, id ASC"
+
+    with get_connection() as conn:
+        cursor = conn.execute(query, params)
+        return [session_row_to_dict(row) for row in cursor.fetchall()]
+
+
+def count_alerts_for_period(started_from=None) -> int:
+    query = "SELECT COUNT(*) FROM alerts"
+    params = []
+    if started_from:
+        query += " WHERE timestamp >= ?"
+        params.append(started_from)
+
+    with get_connection() as conn:
+        cursor = conn.execute(query, params)
+        row = cursor.fetchone()
+        return int(row[0] or 0) if row else 0
+
+
 def update_session_report_path(session_id, report_path):
     with get_connection() as conn:
         conn.execute("""

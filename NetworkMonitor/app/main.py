@@ -39,7 +39,7 @@ from PyQt6.QtWidgets import (
     QSizePolicy, QListWidgetItem, QTableWidget, QTableWidgetItem,
 )
 
-from NetworkMonitor.app.plot_widget import PlotWidget
+from NetworkMonitor.app.plot_widget import AnalyticsChartWidget, PlotWidget
 from NetworkMonitor.app.settings_dialog import SettingsDialog
 from NetworkMonitor.app.worker import CaptureWorker, EnrichmentWorker
 from NetworkMonitor.config.profile_manager import ProfileManager
@@ -49,6 +49,8 @@ from NetworkMonitor.core.enrichment import is_public_ip
 from NetworkMonitor.core.paths import assets_dir, database_path, icons_dir, reports_dir
 from NetworkMonitor.core.report_builder import build_html_report, build_html_report_for_session
 from NetworkMonitor.storage.database import (
+    count_alerts_for_period,
+    get_analytics_sessions,
     get_last_session_id,
     get_alert_types,
     get_previous_session_record,
@@ -109,6 +111,7 @@ class MainWindow(QMainWindow):
         self.is_monitoring = False
         self.current_mode = "idle"
         self._active_worker_mode = "idle"
+        self.analytics_page_index = 5
         self.last_pcap_path: str | None = None
         self.log_history: list[str] = []
         self.threat_counter: Counter[str] = Counter()
@@ -201,6 +204,12 @@ class MainWindow(QMainWindow):
         self._configure_nav_button(self.pcap_nav_btn, "pcap.svg")
         nav_layout.addWidget(self.pcap_nav_btn)
 
+        self.analytics_nav_btn = QPushButton("Аналитика")
+        self.analytics_nav_btn.setCheckable(True)
+        self.analytics_nav_btn.clicked.connect(lambda: self.switch_page(self.analytics_page_index))
+        self._configure_nav_button(self.analytics_nav_btn, "analytics.svg")
+        nav_layout.addWidget(self.analytics_nav_btn)
+
         self.sessions_nav_btn = QPushButton("Сессии")
         self.sessions_nav_btn.setCheckable(True)
         self.sessions_nav_btn.clicked.connect(lambda: self.switch_page(3))
@@ -236,6 +245,8 @@ class MainWindow(QMainWindow):
 
         self.alerts_page = self._build_alerts_page()
         self.pages.addWidget(self.alerts_page)
+
+        self.analytics_page_index = self.pages.addWidget(self._build_analytics_page())
 
         root_layout.addWidget(sidebar)
         root_layout.addWidget(self.pages)
@@ -1709,6 +1720,118 @@ class MainWindow(QMainWindow):
         self._clear_alert_details_panel()
         return page
 
+    def _make_analytics_metric_card(self, title: str) -> tuple[QFrame, QLabel]:
+        card = QFrame()
+        card.setObjectName("metric_card")
+        card.setMinimumHeight(104)
+        layout = QVBoxLayout(card)
+        layout.setContentsMargins(16, 12, 16, 12)
+        layout.setSpacing(6)
+
+        title_label = QLabel(title)
+        title_label.setObjectName("metric_title")
+        value_label = QLabel("-")
+        value_label.setObjectName("metric_value")
+        value_label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+
+        layout.addWidget(title_label)
+        layout.addWidget(value_label)
+        layout.addStretch(1)
+        return card, value_label
+
+    def _build_analytics_page(self) -> QWidget:
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+
+        page = QWidget()
+        layout = QVBoxLayout(page)
+        layout.setContentsMargins(18, 18, 18, 18)
+        layout.setSpacing(14)
+        scroll.setWidget(page)
+
+        header = QHBoxLayout()
+        header.setContentsMargins(0, 0, 0, 0)
+        header.setSpacing(12)
+
+        title_wrap = QVBoxLayout()
+        title_wrap.setContentsMargins(0, 0, 0, 0)
+        title = QLabel("Аналитика")
+        title.setObjectName("sessions_page_title")
+        subtitle = QLabel("Оценка информационной безопасности по сохранённым сессиям")
+        subtitle.setObjectName("sessions_page_subtitle")
+        title_wrap.addWidget(title)
+        title_wrap.addWidget(subtitle)
+        header.addLayout(title_wrap, 1)
+
+        self.analytics_period_combo = QComboBox()
+        self.analytics_period_combo.addItem("Последние 7 дней", "7d")
+        self.analytics_period_combo.addItem("Последние 30 дней", "30d")
+        self.analytics_period_combo.addItem("Все сессии", "all")
+        self.analytics_period_combo.currentIndexChanged.connect(
+            lambda _index: self.refresh_analytics_page()
+        )
+        header.addWidget(self.analytics_period_combo, 0, Qt.AlignmentFlag.AlignRight)
+        layout.addLayout(header)
+
+        self.analytics_empty_label = QLabel("")
+        self.analytics_empty_label.setObjectName("session_body_text")
+        self.analytics_empty_label.setWordWrap(True)
+        self.analytics_empty_label.setVisible(False)
+        layout.addWidget(self.analytics_empty_label)
+
+        metrics_grid = QGridLayout()
+        metrics_grid.setContentsMargins(0, 0, 0, 0)
+        metrics_grid.setHorizontalSpacing(12)
+        metrics_grid.setVerticalSpacing(12)
+
+        self.analytics_metric_labels = {}
+        metric_titles = [
+            ("avg_score", "Средний IB Score"),
+            ("min_score", "Минимальный IB Score"),
+            ("max_score", "Максимальный IB Score"),
+            ("sessions", "Количество сессий"),
+            ("anomalies", "Всего аномалий"),
+            ("incidents", "Всего инцидентов"),
+            ("ioc", "Всего IOC совпадений"),
+        ]
+        for idx, (key, metric_title) in enumerate(metric_titles):
+            card, value_label = self._make_analytics_metric_card(metric_title)
+            self.analytics_metric_labels[key] = value_label
+            row, col = divmod(idx, 4)
+            metrics_grid.addWidget(card, row, col)
+            metrics_grid.setColumnStretch(col, 1)
+        layout.addLayout(metrics_grid)
+
+        charts_grid = QGridLayout()
+        charts_grid.setContentsMargins(0, 0, 0, 0)
+        charts_grid.setHorizontalSpacing(12)
+        charts_grid.setVerticalSpacing(12)
+
+        score_card, score_layout = self._make_settings_card("Динамика IB Score")
+        self.analytics_score_chart = AnalyticsChartWidget("IB Score по сессиям")
+        self.analytics_score_chart.setMinimumHeight(260)
+        score_layout.addWidget(self.analytics_score_chart)
+        charts_grid.addWidget(score_card, 0, 0)
+
+        events_card, events_layout = self._make_settings_card("События за период")
+        self.analytics_events_chart = AnalyticsChartWidget("Аномалии, инциденты, IOC и алерты")
+        self.analytics_events_chart.setMinimumHeight(260)
+        events_layout.addWidget(self.analytics_events_chart)
+        charts_grid.addWidget(events_card, 0, 1)
+
+        self.analytics_risk_card, risk_layout = self._make_settings_card("Средний состав риска")
+        self.analytics_risk_chart = AnalyticsChartWidget("Компоненты риска")
+        self.analytics_risk_chart.setMinimumHeight(240)
+        risk_layout.addWidget(self.analytics_risk_chart)
+        charts_grid.addWidget(self.analytics_risk_card, 1, 0, 1, 2)
+
+        charts_grid.setColumnStretch(0, 1)
+        charts_grid.setColumnStretch(1, 1)
+        layout.addLayout(charts_grid)
+        layout.addStretch(1)
+
+        return scroll
+
     # ---------- helpers ----------
     def _configure_nav_button(self, button: QPushButton, icon_name: str) -> None:
         icon_path = self.nav_icons_dir / icon_name
@@ -1728,6 +1851,7 @@ class MainWindow(QMainWindow):
         return [
             (self.main_nav_btn, "Мониторинг", "М", "Мониторинг"),
             (self.pcap_nav_btn, "PCAP-анализ", "P", "PCAP-анализ"),
+            (self.analytics_nav_btn, "Аналитика", "А", "Аналитика"),
             (self.sessions_nav_btn, "Сессии", "С", "Сессии"),
             (self.alerts_nav_btn, "Алерты", "А", "Алерты"),
             (self.settings_nav_btn, "Настройки", "Н", "Настройки"),
@@ -2963,6 +3087,120 @@ IPs: {ips}
 """
         self.alert_details.setText(detail)
 
+    # -------- analytics --------
+    def _analytics_cutoff(self) -> str | None:
+        if not hasattr(self, "analytics_period_combo"):
+            return None
+
+        key = self.analytics_period_combo.currentData()
+        if key == "7d":
+            cutoff = datetime.now() - timedelta(days=7)
+        elif key == "30d":
+            cutoff = datetime.now() - timedelta(days=30)
+        else:
+            return None
+        return cutoff.strftime("%Y-%m-%d %H:%M:%S")
+
+    def _analytics_number(self, value, default: float | None = None) -> float | None:
+        if value is None or value == "":
+            return default
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return default
+
+    def _analytics_int(self, value) -> int:
+        number = self._analytics_number(value, 0.0)
+        return int(number or 0)
+
+    def _analytics_risk_components(self, sessions: list[dict]) -> dict[str, float]:
+        keys = ["network_risk", "ml_risk", "ioc_risk", "host_compromise_risk"]
+        totals = {key: 0.0 for key in keys}
+        counts = {key: 0 for key in keys}
+
+        for session in sessions:
+            components = self._parse_json_value(session.get("risk_components_json"), {})
+            if not isinstance(components, dict):
+                continue
+            for key in keys:
+                value = self._analytics_number(components.get(key))
+                if value is None:
+                    continue
+                totals[key] += value
+                counts[key] += 1
+
+        return {
+            key: totals[key] / counts[key]
+            for key in keys
+            if counts[key] > 0
+        }
+
+    def refresh_analytics_page(self) -> None:
+        if not hasattr(self, "analytics_metric_labels"):
+            return
+
+        init_db()
+        cutoff = self._analytics_cutoff()
+        sessions = get_analytics_sessions(cutoff)
+        alerts_count = count_alerts_for_period(cutoff)
+
+        scores = [
+            score
+            for score in (self._analytics_number(session.get("final_ib_score")) for session in sessions)
+            if score is not None
+        ]
+        anomalies_total = sum(self._analytics_int(session.get("total_anomalies")) for session in sessions)
+        incidents_total = sum(self._analytics_int(session.get("total_incidents")) for session in sessions)
+        ioc_total = sum(self._analytics_int(session.get("total_ioc_matches")) for session in sessions)
+
+        labels = self.analytics_metric_labels
+        labels["avg_score"].setText(f"{sum(scores) / len(scores):.1f}" if scores else "-")
+        labels["min_score"].setText(f"{min(scores):.0f}" if scores else "-")
+        labels["max_score"].setText(f"{max(scores):.0f}" if scores else "-")
+        labels["sessions"].setText(f"{len(sessions):,}")
+        labels["anomalies"].setText(f"{anomalies_total:,}")
+        labels["incidents"].setText(f"{incidents_total:,}")
+        labels["ioc"].setText(f"{ioc_total:,}")
+
+        if hasattr(self, "analytics_empty_label"):
+            self.analytics_empty_label.setVisible(not bool(sessions))
+            if not sessions:
+                self.analytics_empty_label.setText("Нет сохранённых сессий за выбранный период.")
+
+        score_labels = []
+        score_values = []
+        for session in sessions:
+            score = self._analytics_number(session.get("final_ib_score"))
+            if score is None:
+                continue
+            score_labels.append(f"{session.get('id')}\n{self._format_session_date(session.get('started_at'))}")
+            score_values.append(score)
+
+        if score_values:
+            self.analytics_score_chart.plot_line(score_labels, score_values, "IB Score")
+        else:
+            self.analytics_score_chart.show_empty("Нет IB Score за период")
+
+        self.analytics_events_chart.plot_bars(
+            ["Аномалии", "Инциденты", "IOC", "Алерты"],
+            [anomalies_total, incidents_total, ioc_total, alerts_count],
+            "Количество",
+        )
+
+        risk_components = self._analytics_risk_components(sessions)
+        if risk_components:
+            self.analytics_risk_card.setVisible(True)
+            risk_labels = ["Network", "ML", "IOC", "Host"]
+            risk_values = [
+                risk_components.get("network_risk", 0.0),
+                risk_components.get("ml_risk", 0.0),
+                risk_components.get("ioc_risk", 0.0),
+                risk_components.get("host_compromise_risk", 0.0),
+            ]
+            self.analytics_risk_chart.plot_bars(risk_labels, risk_values, "Средний риск")
+        else:
+            self.analytics_risk_card.setVisible(False)
+
     # -------- sessions --------
     def _format_session_duration(self, duration) -> str:
         try:
@@ -3460,16 +3698,20 @@ IOC совпадения: {s.get('total_ioc_matches') or 0}
             self.refresh_settings_profile_page()
         if index == 4 and hasattr(self, "alerts_table"):
             self.ensure_alerts_loaded()
+        if index == self.analytics_page_index:
+            self.refresh_analytics_page()
         nav_buttons = [
-            self.main_nav_btn,
-            self.pcap_nav_btn,
-            self.settings_nav_btn,
-            self.sessions_nav_btn,
-            self.alerts_nav_btn,
+            (0, self.main_nav_btn),
+            (1, self.pcap_nav_btn),
+            (2, self.settings_nav_btn),
+            (3, self.sessions_nav_btn),
+            (4, self.alerts_nav_btn),
+            (self.analytics_page_index, self.analytics_nav_btn),
         ]
-        for i, btn in enumerate(nav_buttons):
-            btn.setChecked(i == index)
-            btn.setObjectName("nav_btn_active" if i == index else "nav_btn")
+        for page_index, btn in nav_buttons:
+            is_active = page_index == index
+            btn.setChecked(is_active)
+            btn.setObjectName("nav_btn_active" if is_active else "nav_btn")
             self._refresh_widget_style(btn)
         if hasattr(self, "sidebar"):
             self._apply_sidebar_state(refresh_styles=False)
